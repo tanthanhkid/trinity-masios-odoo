@@ -24,6 +24,14 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - **odoo-selfhost**: Odoo install, deploy, module dev, troubleshoot
 - **smart-memory**: Error learning via SQLite, project context persistence
 
+## Odoo MCP Server
+- Real-time bridge to Odoo via XML-RPC (`.mcp.json` → `mcp/odoo-server/server.py`)
+- Credentials in `.env.local` (gitignored), template in `.env.example`
+- 13 tools: introspect models/fields/access/views, CRUD, CRM helpers, execute methods
+- Use `odoo_model_fields` to get field types, constraints, relations for any model
+- Use `odoo_list_models` with filter to discover models (e.g. filter="crm")
+- Requires `uv` (Python package runner) — no global install needed
+
 ## Conventions
 - Use `sshpass` for SSH connections to this server
 - Always backup before destructive operations

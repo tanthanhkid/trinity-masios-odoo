@@ -17,6 +17,7 @@ Thumbs.db
 
 # Secrets
 *.env
+*.env.local
 *.local.md
 
 # SQLite (don't commit the actual DB, just the schema)
