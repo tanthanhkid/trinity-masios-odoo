@@ -1,0 +1,53 @@
+{
+  "description": "Smart Memory hooks - error tracking, session context, and compact preservation via SQLite",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '${CLAUDE_PLUGIN_ROOT}/hooks/session-start-hook.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '${CLAUDE_PLUGIN_ROOT}/hooks/error-tracker-hook.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '${CLAUDE_PLUGIN_ROOT}/hooks/compact-hook.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Before finishing, update the project status in Smart Memory. Run: python3 ~/.claude/plugins/local/devops-ssh/hooks/smart-memory-db.py update-status '{\"project_path\": \"$CWD\", \"session_id\": \"$SESSION_ID\", \"status\": \"<current_status>\", \"current_task\": \"<what_was_being_worked_on>\", \"completed_tasks\": \"<what_was_completed>\", \"pending_tasks\": \"<what_remains>\", \"notes\": \"<any_important_notes>\"}'. Fill in the placeholders with actual values from this session.",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
