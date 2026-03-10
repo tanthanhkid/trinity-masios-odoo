@@ -1,0 +1,19 @@
+[Unit]
+Description=Odoo MCP Server (HTTP)
+After=network.target odoo.service
+Wants=odoo.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/odoo/mcp-server
+Environment=ODOO_URL=http://127.0.0.1:8069
+Environment=ODOO_DB=odoo
+Environment=ODOO_USERNAME=admin
+Environment=ODOO_PASSWORD=admin
+ExecStart=/usr/local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --port 8200
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
