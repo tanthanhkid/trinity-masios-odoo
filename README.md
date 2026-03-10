@@ -37,7 +37,8 @@ python3 setup-claude.py      # installs skills, hooks, memory
 
 ### OpenClaw (any machine)
 ```bash
-mcporter config add odoo http://103.72.97.51:8200/mcp --scope home
+mcporter config add odoo http://103.72.97.51:8200/sse \
+  --header "Authorization=Bearer YOUR_API_TOKEN" --scope home
 cp deploy/mcp/openclaw-skill ~/.openclaw/skills/odoo-crm
 # Done — agents can now call mcporter call odoo.<tool>
 ```
@@ -84,6 +85,7 @@ See [openclaw_setup.md](openclaw_setup.md) for detailed guide.
 
 ## Security
 
+- **Bearer token auth** on HTTP endpoint — generate with `python3 server.py --generate-token`
 - Credentials stored in `.env.local` (gitignored) or `/etc/odoo-mcp/credentials` (server)
 - MCP HTTP binds to `127.0.0.1` by default (use reverse proxy for remote)
 - `odoo_execute` restricted to allowlisted methods

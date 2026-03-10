@@ -8,11 +8,18 @@ Connect any OpenClaw instance to the Odoo 18 CRM system in 2 steps.
 - mcporter installed (`mcporter --version`)
   - If not: `npm install -g mcporter`
 
-## Step 1: Connect to Odoo MCP Server
+## Step 1: Get Your API Token
+
+The MCP server requires bearer token authentication. Request a token from your admin.
+
+## Step 2: Connect to Odoo MCP Server
 
 ```bash
-mcporter config add odoo http://103.72.97.51:8200/mcp --scope home
+mcporter config add odoo http://103.72.97.51:8200/sse \
+  --header "Authorization=Bearer YOUR_API_TOKEN" --scope home
 ```
+
+Replace `YOUR_API_TOKEN` with the token provided by your admin.
 
 Verify:
 ```bash
@@ -27,7 +34,7 @@ mcporter call odoo.odoo_server_info
 mcporter call odoo.odoo_crm_stages
 ```
 
-## Step 2: Install Odoo Skill (teaches agents how to use it)
+## Step 3: Install Odoo Skill (teaches agents how to use it)
 
 ```bash
 # Clone the repo (or just copy the skill folder)
@@ -131,8 +138,10 @@ PostgreSQL 16
 
 | Issue | Fix |
 |-------|-----|
-| `mcporter list odoo` shows nothing | Run `mcporter config add odoo http://103.72.97.51:8200/mcp --scope home` |
+| `mcporter list odoo` shows nothing | Run `mcporter config add odoo http://103.72.97.51:8200/sse --header "Authorization=Bearer TOKEN" --scope home` |
 | Connection refused on 8200 | MCP server not running on remote. Ask admin to check: `systemctl status odoo-mcp` |
+| 401 Unauthorized | Missing or malformed Authorization header. Use `--header "Authorization=Bearer TOKEN"` |
+| 403 Forbidden | Invalid API token. Request a new token from admin |
 | Auth error | Odoo credentials are server-side. Ask admin to verify ODOO_PASSWORD env |
 | `openclaw skills list` missing odoo-crm | Copy skill: `cp -r deploy/mcp/openclaw-skill ~/.openclaw/skills/odoo-crm` |
 | Tool returns empty | Check if Odoo service is running: `mcporter call odoo.odoo_server_info` |

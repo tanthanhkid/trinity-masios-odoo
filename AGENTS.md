@@ -78,10 +78,19 @@ odoo_search_read(model="crm.lead", domain='[["stage_id","=",1]]', fields="name,e
 odoo_write(model="crm.lead", ids="[2]", values='{"stage_id":4}')  # Move to Won
 ```
 
+## Authentication
+
+- **Claude Code (stdio)**: No token needed — runs locally via `.mcp.json`
+- **HTTP endpoint**: Requires bearer token in `Authorization` header
+  - Generate token: `python3 server.py --generate-token`
+  - Token stored in `MCP_API_TOKEN` env var on the server
+  - mcporter clients pass it via `--header "Authorization=Bearer <token>"`
+
 ## Safety Rules
 
 - **Never delete** records without explicit user confirmation
 - **Always check** field names with `odoo_model_fields` before creating/writing
 - `odoo_execute` is restricted to allowlisted methods — don't try arbitrary methods
 - Credentials are in `.env.local` (local) or `/etc/odoo-mcp/credentials` (server) — never expose them
+- **Never expose** API tokens in logs, chat, or commit history
 - For SSH operations, use the ssh-devops skill — never hardcode passwords in commands

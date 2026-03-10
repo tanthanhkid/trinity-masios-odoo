@@ -9,7 +9,7 @@ User=root
 WorkingDirectory=/opt/odoo/mcp-server
 # Credentials in a restricted file (chmod 600, owned by root)
 EnvironmentFile=/etc/odoo-mcp/credentials
-ExecStart=/root/.local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --port 8200
+ExecStart=/root/.local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --host 0.0.0.0 --port 8200
 Restart=on-failure
 RestartSec=5
 

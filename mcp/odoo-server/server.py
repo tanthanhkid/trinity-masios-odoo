@@ -10,8 +10,11 @@ Exposes Odoo's XML-RPC API as MCP tools for:
 Requires: pip install mcp (xmlrpc is stdlib)
 """
 
+import hashlib
+import hmac
 import json
 import os
+import secrets
 import sys
 import xmlrpc.client
 from functools import lru_cache
@@ -21,6 +24,7 @@ from typing import Any
 # MCP SDK
 try:
     from mcp.server.fastmcp import FastMCP
+    from mcp.server.transport_security import TransportSecuritySettings
 except ImportError:
     print("ERROR: Install mcp package: pip install mcp", file=sys.stderr)
     sys.exit(1)
@@ -44,6 +48,7 @@ def load_config() -> dict:
         "db": os.environ.get("ODOO_DB", ""),
         "username": os.environ.get("ODOO_USERNAME", ""),
         "password": os.environ.get("ODOO_PASSWORD", ""),
+        "api_token": os.environ.get("MCP_API_TOKEN", ""),
     }
 
 
@@ -196,6 +201,9 @@ class OdooClient:
 mcp = FastMCP(
     "odoo",
     instructions="Real-time Odoo introspection and CRUD via XML-RPC",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    ),
 )
 
 _client: OdooClient | None = None
@@ -212,7 +220,8 @@ def get_client() -> OdooClient:
                 "Set via environment variables (ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD) "
                 "or in .env.local file."
             )
-        _client = OdooClient(**cfg)
+        odoo_cfg = {k: cfg[k] for k in ("url", "db", "username", "password")}
+        _client = OdooClient(**odoo_cfg)
     return _client
 
 
@@ -562,6 +571,46 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
 # Main
 # ---------------------------------------------------------------------------
 
+def _generate_token() -> str:
+    """Generate a cryptographically secure API token."""
+    return secrets.token_urlsafe(32)
+
+
+def _create_authed_app(app, api_token: str):
+    """Wrap a Starlette app with bearer token authentication middleware."""
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+    from starlette.types import ASGIApp, Receive, Scope, Send
+
+    class BearerTokenMiddleware:
+        def __init__(self, wrapped_app: ASGIApp, token: str):
+            self.app = wrapped_app
+            self.token = token
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send):
+            if scope["type"] == "http":
+                request = Request(scope)
+                auth_header = request.headers.get("authorization", "")
+                if not auth_header.startswith("Bearer "):
+                    response = JSONResponse(
+                        {"error": "Missing Authorization header. Use: Bearer <token>"},
+                        status_code=401,
+                    )
+                    await response(scope, receive, send)
+                    return
+                provided_token = auth_header[7:]  # strip "Bearer "
+                if not hmac.compare_digest(provided_token, self.token):
+                    response = JSONResponse(
+                        {"error": "Invalid API token"},
+                        status_code=403,
+                    )
+                    await response(scope, receive, send)
+                    return
+            await self.app(scope, receive, send)
+
+    return BearerTokenMiddleware(app, api_token)
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Odoo MCP Server")
@@ -571,11 +620,38 @@ if __name__ == "__main__":
     )
     parser.add_argument("--port", type=int, default=8200, help="HTTP port (default 8200)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host (default 127.0.0.1)")
+    parser.add_argument("--generate-token", action="store_true", help="Generate a new API token and exit")
     cli_args = parser.parse_args()
 
+    if cli_args.generate_token:
+        token = _generate_token()
+        print(f"Generated API token (add to /etc/odoo-mcp/credentials):\n")
+        print(f"  MCP_API_TOKEN={token}\n")
+        print(f"For mcporter clients:\n")
+        print(f"  mcporter config add odoo http://YOUR_SERVER:8200/sse \\")
+        print(f"    --header \"Authorization=Bearer {token}\" --scope home")
+        sys.exit(0)
+
     if cli_args.http:
+        cfg = load_config()
+        api_token = cfg.get("api_token", "")
+
+        if not api_token:
+            print("WARNING: No MCP_API_TOKEN set — HTTP endpoint has NO authentication!", file=sys.stderr)
+            print("Generate one with: python3 server.py --generate-token", file=sys.stderr)
+            print("Then add MCP_API_TOKEN=<token> to /etc/odoo-mcp/credentials\n", file=sys.stderr)
+
         mcp.settings.host = cli_args.host
         mcp.settings.port = cli_args.port
-        mcp.run(transport="streamable-http")
+
+        if api_token:
+            # Wrap the Starlette app with bearer token auth
+            import uvicorn
+            app = mcp.sse_app()
+            authed_app = _create_authed_app(app, api_token)
+            print(f"Starting Odoo MCP Server on {cli_args.host}:{cli_args.port} (SSE, token auth enabled)")
+            uvicorn.run(authed_app, host=cli_args.host, port=cli_args.port)
+        else:
+            mcp.run(transport="sse")
     else:
         mcp.run()

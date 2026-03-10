@@ -33,6 +33,15 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - Use `odoo_list_models` with filter to discover models (e.g. filter="crm")
 - Requires `uv` (Python package runner) — no global install needed
 
+### Authentication
+- **stdio mode** (Claude Code): No token needed — runs locally
+- **HTTP mode** (OpenClaw/remote): Bearer token required
+  - Token stored in `MCP_API_TOKEN` env var (in `/etc/odoo-mcp/credentials` on server)
+  - Generate: `uv run --with mcp python3 mcp/odoo-server/server.py --generate-token`
+  - Without token: server warns but still starts (NO auth — dev only)
+  - With token: all HTTP requests must include `Authorization: Bearer <token>` header
+  - Auth errors: 401 (missing header), 403 (wrong token)
+
 ### OpenClaw Integration
 - Registered in mcporter: `~/.mcporter/mcporter.json` (home scope)
 - OpenClaw agents use `mcporter` skill to call Odoo tools
@@ -48,10 +57,11 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - Systemd: `deploy/mcp/odoo-mcp.service` → runs on server as HTTP
 - New OpenClaw setup: see `openclaw_setup.md`
 - Skill for agents: `deploy/mcp/openclaw-skill/SKILL.md`
+- mcporter with auth: `mcporter config add odoo http://server:8200/sse --header "Authorization=Bearer <token>" --scope home`
 
 ### Modes
-- **stdio** (Claude Code): `.mcp.json` → `uv run` → local process
-- **HTTP** (OpenClaw remote): `http://server:8200/mcp` → mcporter connects
+- **stdio** (Claude Code): `.mcp.json` → `uv run` → local process (no token needed)
+- **HTTP** (OpenClaw remote): `http://server:8200/sse` → mcporter connects (bearer token required)
 
 ## Conventions
 - Use `sshpass` for SSH connections to this server

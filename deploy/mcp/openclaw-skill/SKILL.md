@@ -18,11 +18,14 @@ Interact with a live Odoo 18 instance via the Odoo MCP server. All operations go
 
 ## Setup (one-time)
 
-If the `odoo` server is not yet configured, add it:
+If the `odoo` server is not yet configured, add it with your API token:
 
 ```bash
-mcporter config add odoo http://103.72.97.51:8200/mcp --scope home
+mcporter config add odoo http://103.72.97.51:8200/sse \
+  --header "Authorization=Bearer YOUR_API_TOKEN" --scope home
 ```
+
+Replace `YOUR_API_TOKEN` with the token provided by your admin.
 
 Verify with: `mcporter list odoo`
 

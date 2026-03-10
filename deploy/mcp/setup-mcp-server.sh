@@ -55,9 +55,9 @@ systemctl status odoo-mcp --no-pager || true
 
 echo ""
 echo "=== MCP Server deployed ==="
-echo "  URL: http://103.72.97.51:8200/mcp"
+echo "  URL: http://103.72.97.51:8200/sse"
 echo "  Status: systemctl status odoo-mcp"
 echo "  Logs: journalctl -u odoo-mcp -f"
 echo ""
 echo "  For any OpenClaw:"
-echo "    mcporter config add odoo http://103.72.97.51:8200/mcp --scope home"
+echo "    mcporter config add odoo http://103.72.97.51:8200/sse --scope home"
