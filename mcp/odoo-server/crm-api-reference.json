@@ -1,0 +1,1432 @@
+{
+  "crm.lead": {
+    "active": {
+      "label": "Active",
+      "type": "boolean"
+    },
+    "activity_calendar_event_id": {
+      "label": "Next Activity Calendar Event",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "calendar.event"
+    },
+    "activity_date_deadline": {
+      "label": "Next Activity Deadline",
+      "type": "date",
+      "readonly": true
+    },
+    "activity_exception_decoration": {
+      "label": "Activity Exception Decoration",
+      "type": "selection",
+      "readonly": true,
+      "selection": [
+        [
+          "warning",
+          "Alert"
+        ],
+        [
+          "danger",
+          "Error"
+        ]
+      ],
+      "help": "Type of the exception activity on record."
+    },
+    "activity_exception_icon": {
+      "label": "Icon",
+      "type": "char",
+      "readonly": true,
+      "help": "Icon to indicate an exception activity."
+    },
+    "activity_ids": {
+      "label": "Activities",
+      "type": "one2many",
+      "relation": "mail.activity"
+    },
+    "activity_state": {
+      "label": "Activity State",
+      "type": "selection",
+      "readonly": true,
+      "selection": [
+        [
+          "overdue",
+          "Overdue"
+        ],
+        [
+          "today",
+          "Today"
+        ],
+        [
+          "planned",
+          "Planned"
+        ]
+      ],
+      "help": "Status based on activities\nOverdue: Due date is already passed\nToday: Activity date is today\nPlanned: Future activities."
+    },
+    "activity_summary": {
+      "label": "Next Activity Summary",
+      "type": "char"
+    },
+    "activity_type_icon": {
+      "label": "Activity Type Icon",
+      "type": "char",
+      "readonly": true,
+      "help": "Font awesome icon e.g. fa-tasks"
+    },
+    "activity_type_id": {
+      "label": "Next Activity Type",
+      "type": "many2one",
+      "relation": "mail.activity.type"
+    },
+    "activity_user_id": {
+      "label": "Responsible User",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "automated_probability": {
+      "label": "Automated Probability",
+      "type": "float",
+      "readonly": true
+    },
+    "calendar_event_ids": {
+      "label": "Meetings",
+      "type": "one2many",
+      "relation": "calendar.event"
+    },
+    "campaign_id": {
+      "label": "Campaign",
+      "type": "many2one",
+      "relation": "utm.campaign",
+      "help": "This is a name that helps you keep track of your different campaign efforts, e.g. Fall_Drive, Christmas_Special"
+    },
+    "city": {
+      "label": "City",
+      "type": "char"
+    },
+    "color": {
+      "label": "Color Index",
+      "type": "integer"
+    },
+    "company_currency": {
+      "label": "Currency",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.currency"
+    },
+    "company_id": {
+      "label": "Company",
+      "type": "many2one",
+      "relation": "res.company"
+    },
+    "contact_name": {
+      "label": "Contact Name",
+      "type": "char"
+    },
+    "country_id": {
+      "label": "Country",
+      "type": "many2one",
+      "relation": "res.country"
+    },
+    "create_date": {
+      "label": "Created on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "create_uid": {
+      "label": "Created by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "date_automation_last": {
+      "label": "Last Action",
+      "type": "datetime",
+      "readonly": true
+    },
+    "date_closed": {
+      "label": "Closed Date",
+      "type": "datetime",
+      "readonly": true
+    },
+    "date_conversion": {
+      "label": "Conversion Date",
+      "type": "datetime",
+      "readonly": true
+    },
+    "date_deadline": {
+      "label": "Expected Closing",
+      "type": "date",
+      "help": "Estimate of the date on which the opportunity will be won."
+    },
+    "date_last_stage_update": {
+      "label": "Last Stage Update",
+      "type": "datetime",
+      "readonly": true
+    },
+    "date_open": {
+      "label": "Assignment Date",
+      "type": "datetime",
+      "readonly": true
+    },
+    "day_close": {
+      "label": "Days to Close",
+      "type": "float",
+      "readonly": true
+    },
+    "day_open": {
+      "label": "Days to Assign",
+      "type": "float",
+      "readonly": true
+    },
+    "description": {
+      "label": "Notes",
+      "type": "html"
+    },
+    "display_name": {
+      "label": "Display Name",
+      "type": "char",
+      "readonly": true
+    },
+    "duplicate_lead_count": {
+      "label": "Potential Duplicate Lead Count",
+      "type": "integer",
+      "readonly": true
+    },
+    "duplicate_lead_ids": {
+      "label": "Potential Duplicate Lead",
+      "type": "many2many",
+      "readonly": true,
+      "relation": "crm.lead"
+    },
+    "duration_tracking": {
+      "label": "Status time",
+      "type": "json",
+      "readonly": true,
+      "help": "JSON that maps ids from a many2one field to seconds spent"
+    },
+    "email_cc": {
+      "label": "Email cc",
+      "type": "char"
+    },
+    "email_domain_criterion": {
+      "label": "Email Domain Criterion",
+      "type": "char",
+      "readonly": true
+    },
+    "email_from": {
+      "label": "Email",
+      "type": "char"
+    },
+    "email_normalized": {
+      "label": "Normalized Email",
+      "type": "char",
+      "readonly": true,
+      "help": "This field is used to search on email address as the primary email field can contain more than strictly an email address."
+    },
+    "email_state": {
+      "label": "Email Quality",
+      "type": "selection",
+      "readonly": true,
+      "selection": [
+        [
+          "correct",
+          "Correct"
+        ],
+        [
+          "incorrect",
+          "Incorrect"
+        ]
+      ]
+    },
+    "expected_revenue": {
+      "label": "Expected Revenue",
+      "type": "monetary"
+    },
+    "function": {
+      "label": "Job Position",
+      "type": "char"
+    },
+    "has_message": {
+      "label": "Has Message",
+      "type": "boolean",
+      "readonly": true
+    },
+    "iap_enrich_done": {
+      "label": "Enrichment done",
+      "type": "boolean",
+      "help": "Whether IAP service for lead enrichment based on email has been performed on this lead."
+    },
+    "id": {
+      "label": "ID",
+      "type": "integer",
+      "readonly": true
+    },
+    "is_automated_probability": {
+      "label": "Is automated probability?",
+      "type": "boolean",
+      "readonly": true
+    },
+    "is_blacklisted": {
+      "label": "Blacklist",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If the email address is on the blacklist, the contact won't receive mass mailing anymore, from any list"
+    },
+    "is_partner_visible": {
+      "label": "Is Partner Visible",
+      "type": "boolean",
+      "readonly": true
+    },
+    "lang_active_count": {
+      "label": "Lang Active Count",
+      "type": "integer",
+      "readonly": true
+    },
+    "lang_code": {
+      "label": "Locale Code",
+      "type": "char",
+      "readonly": true,
+      "help": "This field is used to set/get locales for user"
+    },
+    "lang_id": {
+      "label": "Language",
+      "type": "many2one",
+      "relation": "res.lang"
+    },
+    "lead_mining_request_id": {
+      "label": "Lead Mining Request",
+      "type": "many2one",
+      "relation": "crm.iap.lead.mining.request"
+    },
+    "lead_properties": {
+      "label": "Properties",
+      "type": "properties"
+    },
+    "lost_reason_id": {
+      "label": "Lost Reason",
+      "type": "many2one",
+      "relation": "crm.lost.reason"
+    },
+    "medium_id": {
+      "label": "Medium",
+      "type": "many2one",
+      "relation": "utm.medium",
+      "help": "This is the method of delivery, e.g. Postcard, Email, or Banner Ad"
+    },
+    "meeting_display_date": {
+      "label": "Meeting Display Date",
+      "type": "date",
+      "readonly": true
+    },
+    "meeting_display_label": {
+      "label": "Meeting Display Label",
+      "type": "char",
+      "readonly": true
+    },
+    "message_attachment_count": {
+      "label": "Attachment Count",
+      "type": "integer",
+      "readonly": true
+    },
+    "message_bounce": {
+      "label": "Bounce",
+      "type": "integer",
+      "help": "Counter of the number of bounced emails for this contact"
+    },
+    "message_follower_ids": {
+      "label": "Followers",
+      "type": "one2many",
+      "relation": "mail.followers"
+    },
+    "message_has_error": {
+      "label": "Message Delivery error",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, some messages have a delivery error."
+    },
+    "message_has_error_counter": {
+      "label": "Number of errors",
+      "type": "integer",
+      "readonly": true,
+      "help": "Number of messages with delivery error"
+    },
+    "message_has_sms_error": {
+      "label": "SMS Delivery error",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, some messages have a delivery error."
+    },
+    "message_ids": {
+      "label": "Messages",
+      "type": "one2many",
+      "relation": "mail.message"
+    },
+    "message_is_follower": {
+      "label": "Is Follower",
+      "type": "boolean",
+      "readonly": true
+    },
+    "message_needaction": {
+      "label": "Action Needed",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, new messages require your attention."
+    },
+    "message_needaction_counter": {
+      "label": "Number of Actions",
+      "type": "integer",
+      "readonly": true,
+      "help": "Number of messages requiring action"
+    },
+    "message_partner_ids": {
+      "label": "Followers (Partners)",
+      "type": "many2many",
+      "relation": "res.partner"
+    },
+    "mobile": {
+      "label": "Mobile",
+      "type": "char"
+    },
+    "mobile_blacklisted": {
+      "label": "Blacklisted Phone Is Mobile",
+      "type": "boolean",
+      "readonly": true,
+      "help": "Indicates if a blacklisted sanitized phone number is a mobile number. Helps distinguish which number is blacklisted             when there is both a mobile and phone field in a model."
+    },
+    "my_activity_date_deadline": {
+      "label": "My Activity Deadline",
+      "type": "date",
+      "readonly": true
+    },
+    "name": {
+      "label": "Opportunity",
+      "type": "char",
+      "required": true
+    },
+    "partner_email_update": {
+      "label": "Partner Email will Update",
+      "type": "boolean",
+      "readonly": true
+    },
+    "partner_id": {
+      "label": "Customer",
+      "type": "many2one",
+      "relation": "res.partner",
+      "help": "Linked partner (optional). Usually created when converting the lead. You can find a partner by its Name, TIN, Email or Internal Reference."
+    },
+    "partner_is_blacklisted": {
+      "label": "Partner is blacklisted",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If the email address is on the blacklist, the contact won't receive mass mailing anymore, from any list"
+    },
+    "partner_name": {
+      "label": "Company Name",
+      "type": "char",
+      "help": "The name of the future partner company that will be created while converting the lead into opportunity"
+    },
+    "partner_phone_update": {
+      "label": "Partner Phone will Update",
+      "type": "boolean",
+      "readonly": true
+    },
+    "phone": {
+      "label": "Phone",
+      "type": "char"
+    },
+    "phone_blacklisted": {
+      "label": "Blacklisted Phone is Phone",
+      "type": "boolean",
+      "readonly": true,
+      "help": "Indicates if a blacklisted sanitized phone number is a phone number. Helps distinguish which number is blacklisted             when there is both a mobile and phone field in a model."
+    },
+    "phone_mobile_search": {
+      "label": "Phone/Mobile",
+      "type": "char"
+    },
+    "phone_sanitized": {
+      "label": "Sanitized Number",
+      "type": "char",
+      "readonly": true,
+      "help": "Field used to store sanitized phone number. Helps speeding up searches and comparisons."
+    },
+    "phone_sanitized_blacklisted": {
+      "label": "Phone Blacklisted",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If the sanitized phone number is on the blacklist, the contact won't receive mass mailing sms anymore, from any list"
+    },
+    "phone_state": {
+      "label": "Phone Quality",
+      "type": "selection",
+      "readonly": true,
+      "selection": [
+        [
+          "correct",
+          "Correct"
+        ],
+        [
+          "incorrect",
+          "Incorrect"
+        ]
+      ]
+    },
+    "priority": {
+      "label": "Priority",
+      "type": "selection",
+      "selection": [
+        [
+          "0",
+          "Low"
+        ],
+        [
+          "1",
+          "Medium"
+        ],
+        [
+          "2",
+          "High"
+        ],
+        [
+          "3",
+          "Very High"
+        ]
+      ]
+    },
+    "probability": {
+      "label": "Probability",
+      "type": "float"
+    },
+    "prorated_revenue": {
+      "label": "Prorated Revenue",
+      "type": "monetary",
+      "readonly": true
+    },
+    "recurring_plan": {
+      "label": "Recurring Plan",
+      "type": "many2one",
+      "relation": "crm.recurring.plan"
+    },
+    "recurring_revenue": {
+      "label": "Recurring Revenues",
+      "type": "monetary"
+    },
+    "recurring_revenue_monthly": {
+      "label": "Expected MRR",
+      "type": "monetary",
+      "readonly": true
+    },
+    "recurring_revenue_monthly_prorated": {
+      "label": "Prorated MRR",
+      "type": "monetary",
+      "readonly": true
+    },
+    "recurring_revenue_prorated": {
+      "label": "Prorated Recurring Revenues",
+      "type": "monetary",
+      "readonly": true
+    },
+    "referred": {
+      "label": "Referred By",
+      "type": "char"
+    },
+    "reveal_id": {
+      "label": "Reveal ID",
+      "type": "char"
+    },
+    "show_enrich_button": {
+      "label": "Allow manual enrich",
+      "type": "boolean",
+      "readonly": true
+    },
+    "source_id": {
+      "label": "Source",
+      "type": "many2one",
+      "relation": "utm.source",
+      "help": "This is the source of the link, e.g. Search Engine, another domain, or name of email list"
+    },
+    "stage_id": {
+      "label": "Stage",
+      "type": "many2one",
+      "relation": "crm.stage"
+    },
+    "state_id": {
+      "label": "State",
+      "type": "many2one",
+      "relation": "res.country.state"
+    },
+    "street": {
+      "label": "Street",
+      "type": "char"
+    },
+    "street2": {
+      "label": "Street2",
+      "type": "char"
+    },
+    "tag_ids": {
+      "label": "Tags",
+      "type": "many2many",
+      "relation": "crm.tag",
+      "help": "Classify and analyze your lead/opportunity categories like: Training, Service"
+    },
+    "team_id": {
+      "label": "Sales Team",
+      "type": "many2one",
+      "relation": "crm.team"
+    },
+    "title": {
+      "label": "Title",
+      "type": "many2one",
+      "relation": "res.partner.title"
+    },
+    "type": {
+      "label": "Type",
+      "type": "selection",
+      "required": true,
+      "selection": [
+        [
+          "lead",
+          "Lead"
+        ],
+        [
+          "opportunity",
+          "Opportunity"
+        ]
+      ]
+    },
+    "user_company_ids": {
+      "label": "User Company",
+      "type": "many2many",
+      "readonly": true,
+      "relation": "res.company",
+      "help": "UX: Limit to lead company or all if no company"
+    },
+    "user_id": {
+      "label": "Salesperson",
+      "type": "many2one",
+      "relation": "res.users"
+    },
+    "website": {
+      "label": "Website",
+      "type": "char",
+      "help": "Website of the contact"
+    },
+    "website_message_ids": {
+      "label": "Website Messages",
+      "type": "one2many",
+      "relation": "mail.message",
+      "help": "Website communication history"
+    },
+    "write_date": {
+      "label": "Last Updated on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "write_uid": {
+      "label": "Last Updated by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "zip": {
+      "label": "Zip",
+      "type": "char"
+    }
+  },
+  "crm.stage": {
+    "create_date": {
+      "label": "Created on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "create_uid": {
+      "label": "Created by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "display_name": {
+      "label": "Display Name",
+      "type": "char",
+      "readonly": true
+    },
+    "fold": {
+      "label": "Folded in Pipeline",
+      "type": "boolean",
+      "help": "This stage is folded in the kanban view when there are no records in that stage to display."
+    },
+    "id": {
+      "label": "ID",
+      "type": "integer",
+      "readonly": true
+    },
+    "is_won": {
+      "label": "Is Won Stage?",
+      "type": "boolean"
+    },
+    "name": {
+      "label": "Stage Name",
+      "type": "char",
+      "required": true
+    },
+    "requirements": {
+      "label": "Requirements",
+      "type": "text",
+      "help": "Enter here the internal requirements for this stage (ex: Offer sent to customer). It will appear as a tooltip over the stage's name."
+    },
+    "sequence": {
+      "label": "Sequence",
+      "type": "integer",
+      "help": "Used to order stages. Lower is better."
+    },
+    "team_count": {
+      "label": "team_count",
+      "type": "integer",
+      "readonly": true
+    },
+    "team_id": {
+      "label": "Sales Team",
+      "type": "many2one",
+      "relation": "crm.team",
+      "help": "Specific team that uses this stage. Other teams will not be able to see or use this stage."
+    },
+    "write_date": {
+      "label": "Last Updated on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "write_uid": {
+      "label": "Last Updated by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    }
+  },
+  "crm.tag": {
+    "color": {
+      "label": "Color",
+      "type": "integer"
+    },
+    "create_date": {
+      "label": "Created on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "create_uid": {
+      "label": "Created by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "display_name": {
+      "label": "Display Name",
+      "type": "char",
+      "readonly": true
+    },
+    "id": {
+      "label": "ID",
+      "type": "integer",
+      "readonly": true
+    },
+    "name": {
+      "label": "Tag Name",
+      "type": "char",
+      "required": true
+    },
+    "write_date": {
+      "label": "Last Updated on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "write_uid": {
+      "label": "Last Updated by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    }
+  },
+  "crm.team": {
+    "active": {
+      "label": "Active",
+      "type": "boolean",
+      "help": "If the active field is set to false, it will allow you to hide the Sales Team without removing it."
+    },
+    "alias_bounced_content": {
+      "label": "Custom Bounced Message",
+      "type": "html",
+      "help": "If set, this content will automatically be sent out to unauthorized users instead of the default message."
+    },
+    "alias_contact": {
+      "label": "Alias Contact Security",
+      "type": "selection",
+      "required": true,
+      "selection": [
+        [
+          "everyone",
+          "Everyone"
+        ],
+        [
+          "partners",
+          "Authenticated Partners"
+        ],
+        [
+          "followers",
+          "Followers only"
+        ]
+      ],
+      "help": "Policy to post a message on the document using the mailgateway.\n- everyone: everyone can post\n- partners: only authenticated partners\n- followers: only followers of the related document or members of "
+    },
+    "alias_defaults": {
+      "label": "Default Values",
+      "type": "text",
+      "required": true,
+      "readonly": true,
+      "help": "A Python dictionary that will be evaluated to provide default values when creating new records for this alias."
+    },
+    "alias_domain": {
+      "label": "Alias Domain Name",
+      "type": "char",
+      "readonly": true,
+      "help": "Email domain e.g. 'example.com' in 'odoo@example.com'"
+    },
+    "alias_domain_id": {
+      "label": "Alias Domain",
+      "type": "many2one",
+      "relation": "mail.alias.domain"
+    },
+    "alias_email": {
+      "label": "Email Alias",
+      "type": "char",
+      "readonly": true
+    },
+    "alias_force_thread_id": {
+      "label": "Record Thread ID",
+      "type": "integer",
+      "help": "Optional ID of a thread (record) to which all incoming messages will be attached, even if they did not reply to it. If set, this will disable the creation of new records completely."
+    },
+    "alias_full_name": {
+      "label": "Alias Email",
+      "type": "char",
+      "readonly": true
+    },
+    "alias_id": {
+      "label": "Alias",
+      "type": "many2one",
+      "required": true,
+      "relation": "mail.alias",
+      "help": "The email address associated with this channel. New emails received will automatically create new leads assigned to the channel."
+    },
+    "alias_incoming_local": {
+      "label": "Local-part based incoming detection",
+      "type": "boolean"
+    },
+    "alias_model_id": {
+      "label": "Aliased Model",
+      "type": "many2one",
+      "required": true,
+      "relation": "ir.model",
+      "help": "The model (Odoo Document Kind) to which this alias corresponds. Any incoming email that does not reply to an existing record will cause the creation of a new record of this model (e.g. a Project Task)"
+    },
+    "alias_name": {
+      "label": "Alias Name",
+      "type": "char",
+      "help": "The name of the email alias, e.g. 'jobs' if you want to catch emails for <jobs@example.odoo.com>"
+    },
+    "alias_parent_model_id": {
+      "label": "Parent Model",
+      "type": "many2one",
+      "relation": "ir.model",
+      "help": "Parent model holding the alias. The model holding the alias reference is not necessarily the model given by alias_model_id (example: project (parent_model) and task (model))"
+    },
+    "alias_parent_thread_id": {
+      "label": "Parent Record Thread ID",
+      "type": "integer",
+      "help": "ID of the parent record holding the alias (example: project holding the task creation alias)"
+    },
+    "alias_status": {
+      "label": "Alias Status",
+      "type": "selection",
+      "readonly": true,
+      "selection": [
+        [
+          "not_tested",
+          "Not Tested"
+        ],
+        [
+          "valid",
+          "Valid"
+        ],
+        [
+          "invalid",
+          "Invalid"
+        ]
+      ],
+      "help": "Alias status assessed on the last message received."
+    },
+    "assignment_auto_enabled": {
+      "label": "Auto Assignment",
+      "type": "boolean",
+      "readonly": true
+    },
+    "assignment_domain": {
+      "label": "Assignment Domain",
+      "type": "char",
+      "help": "Additional filter domain when fetching unassigned leads to allocate to the team."
+    },
+    "assignment_enabled": {
+      "label": "Lead Assign",
+      "type": "boolean",
+      "readonly": true
+    },
+    "assignment_max": {
+      "label": "Lead Average Capacity",
+      "type": "integer",
+      "readonly": true,
+      "help": "Monthly average leads capacity for all salesmen belonging to the team"
+    },
+    "assignment_optout": {
+      "label": "Skip auto assignment",
+      "type": "boolean"
+    },
+    "color": {
+      "label": "Color Index",
+      "type": "integer",
+      "help": "The color of the channel"
+    },
+    "company_id": {
+      "label": "Company",
+      "type": "many2one",
+      "relation": "res.company"
+    },
+    "create_date": {
+      "label": "Created on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "create_uid": {
+      "label": "Created by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "crm_team_member_all_ids": {
+      "label": "Sales Team Members (incl. inactive)",
+      "type": "one2many",
+      "relation": "crm.team.member"
+    },
+    "crm_team_member_ids": {
+      "label": "Sales Team Members",
+      "type": "one2many",
+      "relation": "crm.team.member",
+      "help": "Add members to automatically assign their documents to this sales team."
+    },
+    "currency_id": {
+      "label": "Currency",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.currency"
+    },
+    "dashboard_button_name": {
+      "label": "Dashboard Button",
+      "type": "char",
+      "readonly": true
+    },
+    "dashboard_graph_data": {
+      "label": "Dashboard Graph Data",
+      "type": "text",
+      "readonly": true
+    },
+    "display_name": {
+      "label": "Display Name",
+      "type": "char",
+      "readonly": true
+    },
+    "favorite_user_ids": {
+      "label": "Favorite Members",
+      "type": "many2many",
+      "relation": "res.users"
+    },
+    "has_message": {
+      "label": "Has Message",
+      "type": "boolean",
+      "readonly": true
+    },
+    "id": {
+      "label": "ID",
+      "type": "integer",
+      "readonly": true
+    },
+    "is_favorite": {
+      "label": "Show on dashboard",
+      "type": "boolean",
+      "help": "Favorite teams to display them in the dashboard and access them easily."
+    },
+    "is_membership_multi": {
+      "label": "Multiple Memberships Allowed",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If True, users may belong to several sales teams. Otherwise membership is limited to a single sales team."
+    },
+    "lead_all_assigned_month_count": {
+      "label": "# Leads/Opps assigned this month",
+      "type": "integer",
+      "readonly": true,
+      "help": "Number of leads and opportunities assigned this last month."
+    },
+    "lead_all_assigned_month_exceeded": {
+      "label": "Exceed monthly lead assignement",
+      "type": "boolean",
+      "readonly": true,
+      "help": "True if the monthly lead assignment count is greater than the maximum assignment limit, false otherwise."
+    },
+    "lead_properties_definition": {
+      "label": "Lead Properties",
+      "type": "properties_definition"
+    },
+    "lead_unassigned_count": {
+      "label": "# Unassigned Leads",
+      "type": "integer",
+      "readonly": true
+    },
+    "member_company_ids": {
+      "label": "Member Company",
+      "type": "many2many",
+      "readonly": true,
+      "relation": "res.company",
+      "help": "UX: Limit to team company or all if no company"
+    },
+    "member_ids": {
+      "label": "Salespersons",
+      "type": "many2many",
+      "relation": "res.users",
+      "help": "Users assigned to this team."
+    },
+    "member_warning": {
+      "label": "Membership Issue Warning",
+      "type": "text",
+      "readonly": true
+    },
+    "message_attachment_count": {
+      "label": "Attachment Count",
+      "type": "integer",
+      "readonly": true
+    },
+    "message_follower_ids": {
+      "label": "Followers",
+      "type": "one2many",
+      "relation": "mail.followers"
+    },
+    "message_has_error": {
+      "label": "Message Delivery error",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, some messages have a delivery error."
+    },
+    "message_has_error_counter": {
+      "label": "Number of errors",
+      "type": "integer",
+      "readonly": true,
+      "help": "Number of messages with delivery error"
+    },
+    "message_has_sms_error": {
+      "label": "SMS Delivery error",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, some messages have a delivery error."
+    },
+    "message_ids": {
+      "label": "Messages",
+      "type": "one2many",
+      "relation": "mail.message"
+    },
+    "message_is_follower": {
+      "label": "Is Follower",
+      "type": "boolean",
+      "readonly": true
+    },
+    "message_needaction": {
+      "label": "Action Needed",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, new messages require your attention."
+    },
+    "message_needaction_counter": {
+      "label": "Number of Actions",
+      "type": "integer",
+      "readonly": true,
+      "help": "Number of messages requiring action"
+    },
+    "message_partner_ids": {
+      "label": "Followers (Partners)",
+      "type": "many2many",
+      "relation": "res.partner"
+    },
+    "name": {
+      "label": "Sales Team",
+      "type": "char",
+      "required": true
+    },
+    "opportunities_amount": {
+      "label": "Opportunities Revenues",
+      "type": "monetary",
+      "readonly": true
+    },
+    "opportunities_count": {
+      "label": "# Opportunities",
+      "type": "integer",
+      "readonly": true
+    },
+    "opportunities_overdue_amount": {
+      "label": "Overdue Opportunities Revenues",
+      "type": "monetary",
+      "readonly": true
+    },
+    "opportunities_overdue_count": {
+      "label": "# Overdue Opportunities",
+      "type": "integer",
+      "readonly": true
+    },
+    "sequence": {
+      "label": "Sequence",
+      "type": "integer"
+    },
+    "use_leads": {
+      "label": "Leads",
+      "type": "boolean",
+      "help": "Check this box to filter and qualify incoming requests as leads before converting them into opportunities and assigning them to a salesperson."
+    },
+    "use_opportunities": {
+      "label": "Pipeline",
+      "type": "boolean",
+      "help": "Check this box to manage a presales process with opportunities."
+    },
+    "user_id": {
+      "label": "Team Leader",
+      "type": "many2one",
+      "relation": "res.users"
+    },
+    "website_message_ids": {
+      "label": "Website Messages",
+      "type": "one2many",
+      "relation": "mail.message",
+      "help": "Website communication history"
+    },
+    "write_date": {
+      "label": "Last Updated on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "write_uid": {
+      "label": "Last Updated by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    }
+  },
+  "crm.team.member": {
+    "active": {
+      "label": "Active",
+      "type": "boolean"
+    },
+    "assignment_domain": {
+      "label": "Assignment Domain",
+      "type": "char"
+    },
+    "assignment_enabled": {
+      "label": "Lead Assign",
+      "type": "boolean",
+      "readonly": true
+    },
+    "assignment_max": {
+      "label": "Average Leads Capacity (on 30 days)",
+      "type": "integer"
+    },
+    "assignment_optout": {
+      "label": "Skip auto assignment",
+      "type": "boolean"
+    },
+    "company_id": {
+      "label": "Company",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.company",
+      "help": "The default company for this user."
+    },
+    "create_date": {
+      "label": "Created on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "create_uid": {
+      "label": "Created by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "crm_team_id": {
+      "label": "Sales Team",
+      "type": "many2one",
+      "required": true,
+      "relation": "crm.team"
+    },
+    "display_name": {
+      "label": "Display Name",
+      "type": "char",
+      "readonly": true
+    },
+    "email": {
+      "label": "Email",
+      "type": "char",
+      "readonly": true
+    },
+    "has_message": {
+      "label": "Has Message",
+      "type": "boolean",
+      "readonly": true
+    },
+    "id": {
+      "label": "ID",
+      "type": "integer",
+      "readonly": true
+    },
+    "image_128": {
+      "label": "Image (128)",
+      "type": "binary",
+      "readonly": true
+    },
+    "image_1920": {
+      "label": "Image",
+      "type": "binary",
+      "readonly": true
+    },
+    "is_membership_multi": {
+      "label": "Multiple Memberships Allowed",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If True, users may belong to several sales teams. Otherwise membership is limited to a single sales team."
+    },
+    "lead_day_count": {
+      "label": "Leads (last 24h)",
+      "type": "integer",
+      "readonly": true,
+      "help": "Lead assigned to this member this last day (lost one excluded)"
+    },
+    "lead_month_count": {
+      "label": "Leads (30 days)",
+      "type": "integer",
+      "readonly": true,
+      "help": "Lead assigned to this member those last 30 days"
+    },
+    "member_warning": {
+      "label": "Member Warning",
+      "type": "text",
+      "readonly": true
+    },
+    "message_attachment_count": {
+      "label": "Attachment Count",
+      "type": "integer",
+      "readonly": true
+    },
+    "message_follower_ids": {
+      "label": "Followers",
+      "type": "one2many",
+      "relation": "mail.followers"
+    },
+    "message_has_error": {
+      "label": "Message Delivery error",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, some messages have a delivery error."
+    },
+    "message_has_error_counter": {
+      "label": "Number of errors",
+      "type": "integer",
+      "readonly": true,
+      "help": "Number of messages with delivery error"
+    },
+    "message_has_sms_error": {
+      "label": "SMS Delivery error",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, some messages have a delivery error."
+    },
+    "message_ids": {
+      "label": "Messages",
+      "type": "one2many",
+      "relation": "mail.message"
+    },
+    "message_is_follower": {
+      "label": "Is Follower",
+      "type": "boolean",
+      "readonly": true
+    },
+    "message_needaction": {
+      "label": "Action Needed",
+      "type": "boolean",
+      "readonly": true,
+      "help": "If checked, new messages require your attention."
+    },
+    "message_needaction_counter": {
+      "label": "Number of Actions",
+      "type": "integer",
+      "readonly": true,
+      "help": "Number of messages requiring action"
+    },
+    "message_partner_ids": {
+      "label": "Followers (Partners)",
+      "type": "many2many",
+      "relation": "res.partner"
+    },
+    "mobile": {
+      "label": "Mobile",
+      "type": "char",
+      "readonly": true
+    },
+    "name": {
+      "label": "Name",
+      "type": "char"
+    },
+    "phone": {
+      "label": "Phone",
+      "type": "char",
+      "readonly": true
+    },
+    "user_company_ids": {
+      "label": "User Company",
+      "type": "many2many",
+      "readonly": true,
+      "relation": "res.company",
+      "help": "UX: Limit to team company or all if no company"
+    },
+    "user_id": {
+      "label": "Salesperson",
+      "type": "many2one",
+      "required": true,
+      "relation": "res.users"
+    },
+    "user_in_teams_ids": {
+      "label": "User In Teams",
+      "type": "many2many",
+      "readonly": true,
+      "relation": "res.users",
+      "help": "UX: Give users not to add in the currently chosen team to avoid duplicates"
+    },
+    "website_message_ids": {
+      "label": "Website Messages",
+      "type": "one2many",
+      "relation": "mail.message",
+      "help": "Website communication history"
+    },
+    "write_date": {
+      "label": "Last Updated on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "write_uid": {
+      "label": "Last Updated by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    }
+  },
+  "crm.lost.reason": {
+    "active": {
+      "label": "Active",
+      "type": "boolean"
+    },
+    "create_date": {
+      "label": "Created on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "create_uid": {
+      "label": "Created by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "display_name": {
+      "label": "Display Name",
+      "type": "char",
+      "readonly": true
+    },
+    "id": {
+      "label": "ID",
+      "type": "integer",
+      "readonly": true
+    },
+    "leads_count": {
+      "label": "Leads Count",
+      "type": "integer",
+      "readonly": true
+    },
+    "name": {
+      "label": "Description",
+      "type": "char",
+      "required": true
+    },
+    "write_date": {
+      "label": "Last Updated on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "write_uid": {
+      "label": "Last Updated by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    }
+  },
+  "crm.recurring.plan": {
+    "active": {
+      "label": "Active",
+      "type": "boolean"
+    },
+    "create_date": {
+      "label": "Created on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "create_uid": {
+      "label": "Created by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    },
+    "display_name": {
+      "label": "Display Name",
+      "type": "char",
+      "readonly": true
+    },
+    "id": {
+      "label": "ID",
+      "type": "integer",
+      "readonly": true
+    },
+    "name": {
+      "label": "Plan Name",
+      "type": "char",
+      "required": true
+    },
+    "number_of_months": {
+      "label": "# Months",
+      "type": "integer",
+      "required": true
+    },
+    "sequence": {
+      "label": "Sequence",
+      "type": "integer"
+    },
+    "write_date": {
+      "label": "Last Updated on",
+      "type": "datetime",
+      "readonly": true
+    },
+    "write_uid": {
+      "label": "Last Updated by",
+      "type": "many2one",
+      "readonly": true,
+      "relation": "res.users"
+    }
+  }
+}
