@@ -125,7 +125,9 @@ class OdooClient:
         return self.execute(model, "read", ids, **kw)
 
     def create(self, model: str, values: dict) -> int:
-        return self.execute(model, "create", [values])
+        return self._object.execute_kw(
+            self.db, self.uid, self.password, model, "create", [[values]], {},
+        )
 
     def write(self, model: str, ids: list[int], values: dict) -> bool:
         return self.execute(model, "write", ids, values)
@@ -367,7 +369,7 @@ def odoo_crm_lead_summary(
 @mcp.tool()
 def odoo_search_read(
     model: str,
-    domain: str = "[]",
+    domain: Any = "[]",
     fields: str = "",
     limit: int = 20,
     offset: int = 0,
@@ -384,7 +386,7 @@ def odoo_search_read(
         order: Sort order (e.g. 'create_date desc')
     """
     client = get_client()
-    parsed_domain = json.loads(domain) if domain else []
+    parsed_domain = _parse_json(domain) if domain else []
     parsed_fields = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
     limit = min(limit, 100)
 
@@ -399,7 +401,7 @@ def odoo_search_read(
 
 
 @mcp.tool()
-def odoo_count(model: str, domain: str = "[]") -> str:
+def odoo_count(model: str, domain: Any = "[]") -> str:
     """Count records matching a domain.
 
     Args:
@@ -407,13 +409,20 @@ def odoo_count(model: str, domain: str = "[]") -> str:
         domain: Search domain as JSON string
     """
     client = get_client()
-    parsed_domain = json.loads(domain) if domain else []
+    parsed_domain = _parse_json(domain) if domain else []
     count = client.search_count(model, parsed_domain)
     return json.dumps({"model": model, "domain": domain, "count": count})
 
 
+def _parse_json(val: str | dict | list) -> Any:
+    """Parse JSON string or pass through already-parsed objects."""
+    if isinstance(val, (dict, list, int, float, bool)):
+        return val
+    return json.loads(val)
+
+
 @mcp.tool()
-def odoo_create(model: str, values: str) -> str:
+def odoo_create(model: str, values: Any = "{}") -> str:
     """Create a new record in any Odoo model.
 
     Args:
@@ -421,13 +430,13 @@ def odoo_create(model: str, values: str) -> str:
         values: JSON string of field values (e.g. '{"name": "New Lead", "partner_id": 1}')
     """
     client = get_client()
-    parsed_values = json.loads(values)
+    parsed_values = _parse_json(values)
     record_id = client.create(model, parsed_values)
     return json.dumps({"model": model, "created_id": record_id})
 
 
 @mcp.tool()
-def odoo_write(model: str, ids: str, values: str) -> str:
+def odoo_write(model: str, ids: Any = "[]", values: Any = "{}") -> str:
     """Update existing records.
 
     Args:
@@ -436,14 +445,14 @@ def odoo_write(model: str, ids: str, values: str) -> str:
         values: JSON string of field values to update
     """
     client = get_client()
-    parsed_ids = json.loads(ids)
-    parsed_values = json.loads(values)
+    parsed_ids = _parse_json(ids)
+    parsed_values = _parse_json(values)
     result = client.write(model, parsed_ids, parsed_values)
     return json.dumps({"model": model, "ids": parsed_ids, "success": result})
 
 
 @mcp.tool()
-def odoo_delete(model: str, ids: str) -> str:
+def odoo_delete(model: str, ids: Any = "[]") -> str:
     """Delete records from a model. USE WITH CAUTION.
 
     Args:
@@ -451,13 +460,13 @@ def odoo_delete(model: str, ids: str) -> str:
         ids: JSON array of record IDs to delete
     """
     client = get_client()
-    parsed_ids = json.loads(ids)
+    parsed_ids = _parse_json(ids)
     result = client.unlink(model, parsed_ids)
     return json.dumps({"model": model, "deleted_ids": parsed_ids, "success": result})
 
 
 @mcp.tool()
-def odoo_execute(model: str, method: str, args: str = "[]", kwargs: str = "{}") -> str:
+def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") -> str:
     """Execute any method on an Odoo model (advanced).
 
     Args:
@@ -467,8 +476,8 @@ def odoo_execute(model: str, method: str, args: str = "[]", kwargs: str = "{}") 
         kwargs: JSON object of keyword arguments
     """
     client = get_client()
-    parsed_args = json.loads(args)
-    parsed_kwargs = json.loads(kwargs)
+    parsed_args = _parse_json(args)
+    parsed_kwargs = _parse_json(kwargs)
     result = client._object.execute_kw(
         client.db, client.uid, client.password,
         model, method, parsed_args, parsed_kwargs,
