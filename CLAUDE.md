@@ -27,8 +27,8 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 ## Odoo MCP Server
 - Real-time bridge to Odoo via XML-RPC (`.mcp.json` → `mcp/odoo-server/server.py`)
 - Credentials in `.env.local` (gitignored), template in `.env.example`
-- Auth: admin/admin (XML-RPC to port 8069)
-- 13 tools: introspect models/fields/access/views, CRUD, CRM helpers, execute methods
+- Server-side creds: `/etc/odoo-mcp/credentials` (chmod 600)
+- 13 tools: introspect models/fields/access/views, CRUD, CRM helpers, execute (allowlisted)
 - Use `odoo_model_fields` to get field types, constraints, relations for any model
 - Use `odoo_list_models` with filter to discover models (e.g. filter="crm")
 - Requires `uv` (Python package runner) — no global install needed
@@ -44,6 +44,14 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
   - `mcporter call odoo.odoo_crm_stages`
   - `mcporter call odoo.odoo_search_read model=crm.lead domain='[]' limit=10`
 - Env vars (ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD) stored in mcporter config
+- HTTP mode: `server.py --http --port 8200` (for remote OpenClaw instances)
+- Systemd: `deploy/mcp/odoo-mcp.service` → runs on server as HTTP
+- New OpenClaw setup: see `openclaw_setup.md`
+- Skill for agents: `deploy/mcp/openclaw-skill/SKILL.md`
+
+### Modes
+- **stdio** (Claude Code): `.mcp.json` → `uv run` → local process
+- **HTTP** (OpenClaw remote): `http://server:8200/mcp` → mcporter connects
 
 ## Conventions
 - Use `sshpass` for SSH connections to this server

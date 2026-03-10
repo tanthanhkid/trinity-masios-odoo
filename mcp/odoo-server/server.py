@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """
-Odoo MCP Server — Real-time bridge between Claude Code and Odoo instance.
+Odoo MCP Server — Real-time bridge between AI agents and Odoo instance.
 
 Exposes Odoo's XML-RPC API as MCP tools for:
 - Model/field introspection (types, constraints, relations)
 - CRUD operations on any model
 - CRM-specific helpers
-- Authentication info
 
-Requires: pip install mcp xmlrpc-client (xmlrpc is stdlib)
+Requires: pip install mcp (xmlrpc is stdlib)
 """
 
 import json
 import os
 import sys
 import xmlrpc.client
-from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -33,7 +31,6 @@ except ImportError:
 
 def load_config() -> dict:
     """Load Odoo connection config from environment or .env.local file."""
-    # Try .env.local in project root (2 levels up from this file)
     env_file = Path(__file__).resolve().parent.parent.parent / ".env.local"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
@@ -43,11 +40,71 @@ def load_config() -> dict:
                 os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
     return {
-        "url": os.environ.get("ODOO_URL", "http://103.72.97.51:8069"),
-        "db": os.environ.get("ODOO_DB", "odoo"),
-        "username": os.environ.get("ODOO_USERNAME", "admin"),
+        "url": os.environ.get("ODOO_URL", ""),
+        "db": os.environ.get("ODOO_DB", ""),
+        "username": os.environ.get("ODOO_USERNAME", ""),
         "password": os.environ.get("ODOO_PASSWORD", ""),
     }
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+
+def _odoo_error(func):
+    """Decorator: catch XML-RPC and connection errors, return structured JSON."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except xmlrpc.client.Fault as e:
+            msg = e.faultString
+            if "\n" in msg:
+                msg = msg.strip().split("\n")[-1]
+            return json.dumps({"error": msg, "fault_code": e.faultCode})
+        except (ConnectionRefusedError, OSError) as e:
+            return json.dumps({"error": f"Cannot reach Odoo server: {e}"})
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"Invalid JSON input: {e}"})
+        except ValueError as e:
+            return json.dumps({"error": str(e)})
+    wrapper.__name__ = func.__name__
+    wrapper.__doc__ = func.__doc__
+    wrapper.__wrapped__ = func
+    return wrapper
+
+
+def _parse_json(val: Any) -> Any:
+    """Parse JSON string or pass through already-parsed objects.
+    Validates that the result is a list when used for domain parameters."""
+    if isinstance(val, (dict, list, int, float, bool)):
+        return val
+    return json.loads(val)
+
+
+def _parse_domain(val: Any) -> list:
+    """Parse and validate an Odoo domain filter (must be a list)."""
+    result = _parse_json(val)
+    if not isinstance(result, list):
+        raise ValueError(f"Domain must be a list, got {type(result).__name__}")
+    return result
+
+
+def _parse_ids(val: Any) -> list[int]:
+    """Parse and validate a list of record IDs."""
+    result = _parse_json(val)
+    if not isinstance(result, list):
+        raise ValueError(f"IDs must be a list, got {type(result).__name__}")
+    if not all(isinstance(i, int) for i in result):
+        raise ValueError("All IDs must be integers")
+    return result
+
+
+def _parse_values(val: Any) -> dict:
+    """Parse and validate a values dict for create/write."""
+    result = _parse_json(val)
+    if not isinstance(result, dict):
+        raise ValueError(f"Values must be a dict, got {type(result).__name__}")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -83,8 +140,16 @@ class OdooClient:
             self.db, self.uid, self.password, model, method, list(args), kwargs
         )
 
+    @lru_cache(maxsize=64)
+    def fields_get_cached(self, model: str, attrs_tuple: tuple) -> dict:
+        """Cached version of fields_get (attrs as tuple for hashability)."""
+        return self._object.execute_kw(
+            self.db, self.uid, self.password, model, "fields_get",
+            [], {"attributes": list(attrs_tuple)},
+        )
+
     def fields_get(
-        self, model: str, fields: list[str] | None = None,
+        self, model: str,
         attributes: list[str] | None = None,
     ) -> dict:
         attrs = attributes or [
@@ -92,17 +157,7 @@ class OdooClient:
             "size", "relation", "relation_field", "selection",
             "domain", "store", "depends",
         ]
-        kw = {"attributes": attrs}
-        if fields:
-            kw["allfields"] = False  # not used, just pass fields list
-            return self._object.execute_kw(
-                self.db, self.uid, self.password, model, "fields_get",
-                [fields], {"attributes": attrs},
-            )
-        return self._object.execute_kw(
-            self.db, self.uid, self.password, model, "fields_get",
-            [], {"attributes": attrs},
-        )
+        return self.fields_get_cached(model, tuple(attrs))
 
     def search_read(
         self, model: str, domain: list, fields: list[str] | None = None,
@@ -118,15 +173,10 @@ class OdooClient:
     def search_count(self, model: str, domain: list) -> int:
         return self.execute(model, "search_count", domain)
 
-    def read(self, model: str, ids: list[int], fields: list[str] | None = None) -> list[dict]:
-        kw = {}
-        if fields:
-            kw["fields"] = fields
-        return self.execute(model, "read", ids, **kw)
-
     def create(self, model: str, values: dict) -> int:
+        # execute_kw args: [values_dict] — Odoo create accepts dict or list-of-dicts
         return self._object.execute_kw(
-            self.db, self.uid, self.password, model, "create", [[values]], {},
+            self.db, self.uid, self.password, model, "create", [values], {},
         )
 
     def write(self, model: str, ids: list[int], values: dict) -> bool:
@@ -135,7 +185,7 @@ class OdooClient:
     def unlink(self, model: str, ids: list[int]) -> bool:
         return self.execute(model, "unlink", ids)
 
-    def server_version(self) -> str:
+    def server_version(self) -> dict:
         return self._common.version()
 
 
@@ -155,10 +205,12 @@ def get_client() -> OdooClient:
     global _client
     if _client is None:
         cfg = load_config()
-        if not cfg["password"]:
+        missing = [k for k in ("url", "db", "username", "password") if not cfg[k]]
+        if missing:
             raise ValueError(
-                "ODOO_PASSWORD not set. Add it to .env.local:\n"
-                "ODOO_PASSWORD=your_admin_password"
+                f"Missing Odoo config: {', '.join(missing)}. "
+                "Set via environment variables (ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD) "
+                "or in .env.local file."
             )
         _client = OdooClient(**cfg)
     return _client
@@ -167,19 +219,19 @@ def get_client() -> OdooClient:
 # --- Introspection Tools ---
 
 @mcp.tool()
+@_odoo_error
 def odoo_server_info() -> str:
-    """Get Odoo server version and connection info (no secrets exposed)."""
+    """Get Odoo server version and connection status."""
     client = get_client()
     ver = client.server_version()
     return json.dumps({
-        "url": client.url,
-        "db": client.db,
-        "user": client.username,
-        "server_version": ver,
+        "status": "connected",
+        "server_version": ver.get("server_version", "unknown"),
     }, indent=2)
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_list_models(filter: str = "") -> str:
     """List all installed Odoo models. Use filter to search by name (e.g. 'crm', 'sale').
 
@@ -208,6 +260,7 @@ def odoo_list_models(filter: str = "") -> str:
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_model_fields(model: str, field_filter: str = "") -> str:
     """Get all fields of an Odoo model with types, constraints, and relations.
 
@@ -249,6 +302,7 @@ def odoo_model_fields(model: str, field_filter: str = "") -> str:
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_model_access(model: str) -> str:
     """Get access rights (CRUD permissions) for a model by group.
 
@@ -256,7 +310,6 @@ def odoo_model_access(model: str) -> str:
         model: Model technical name (e.g. 'crm.lead')
     """
     client = get_client()
-    # Find model id
     model_ids = client.search_read(
         "ir.model", [("model", "=", model)],
         fields=["id"], limit=1,
@@ -285,6 +338,7 @@ def odoo_model_access(model: str) -> str:
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_model_views(model: str) -> str:
     """List all views (form, list, search, kanban, etc.) for a model.
 
@@ -307,7 +361,6 @@ def odoo_model_views(model: str) -> str:
             "priority": v["priority"],
             "inherits": v["inherit_id"][1] if v["inherit_id"] else None,
         }
-        # Include arch for small views, truncate for large ones
         arch = v.get("arch_db", "") or ""
         if len(arch) <= 2000:
             entry["arch_xml"] = arch
@@ -320,6 +373,7 @@ def odoo_model_views(model: str) -> str:
 # --- CRM-Specific Tools ---
 
 @mcp.tool()
+@_odoo_error
 def odoo_crm_stages() -> str:
     """Get all CRM pipeline stages with their configuration."""
     client = get_client()
@@ -332,6 +386,7 @@ def odoo_crm_stages() -> str:
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_crm_lead_summary(
     stage_id: int = 0,
     limit: int = 20,
@@ -367,6 +422,7 @@ def odoo_crm_lead_summary(
 # --- Generic CRUD Tools ---
 
 @mcp.tool()
+@_odoo_error
 def odoo_search_read(
     model: str,
     domain: Any = "[]",
@@ -386,7 +442,7 @@ def odoo_search_read(
         order: Sort order (e.g. 'create_date desc')
     """
     client = get_client()
-    parsed_domain = _parse_json(domain) if domain else []
+    parsed_domain = _parse_domain(domain) if domain else []
     parsed_fields = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
     limit = min(limit, 100)
 
@@ -401,6 +457,7 @@ def odoo_search_read(
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_count(model: str, domain: Any = "[]") -> str:
     """Count records matching a domain.
 
@@ -409,65 +466,68 @@ def odoo_count(model: str, domain: Any = "[]") -> str:
         domain: Search domain as JSON string
     """
     client = get_client()
-    parsed_domain = _parse_json(domain) if domain else []
+    parsed_domain = _parse_domain(domain) if domain else []
     count = client.search_count(model, parsed_domain)
-    return json.dumps({"model": model, "domain": domain, "count": count})
-
-
-def _parse_json(val: str | dict | list) -> Any:
-    """Parse JSON string or pass through already-parsed objects."""
-    if isinstance(val, (dict, list, int, float, bool)):
-        return val
-    return json.loads(val)
+    return json.dumps({"model": model, "count": count})
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_create(model: str, values: Any = "{}") -> str:
     """Create a new record in any Odoo model.
 
     Args:
         model: Model name (e.g. 'crm.lead')
-        values: JSON string of field values (e.g. '{"name": "New Lead", "partner_id": 1}')
+        values: Field values as JSON (e.g. '{"name": "New Lead", "partner_id": 1}')
     """
     client = get_client()
-    parsed_values = _parse_json(values)
+    parsed_values = _parse_values(values)
     record_id = client.create(model, parsed_values)
     return json.dumps({"model": model, "created_id": record_id})
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_write(model: str, ids: Any = "[]", values: Any = "{}") -> str:
     """Update existing records.
 
     Args:
         model: Model name
         ids: JSON array of record IDs (e.g. '[1, 2, 3]')
-        values: JSON string of field values to update
+        values: Field values to update as JSON
     """
     client = get_client()
-    parsed_ids = _parse_json(ids)
-    parsed_values = _parse_json(values)
+    parsed_ids = _parse_ids(ids)
+    parsed_values = _parse_values(values)
+    if not parsed_ids:
+        return json.dumps({"error": "No record IDs provided"})
     result = client.write(model, parsed_ids, parsed_values)
     return json.dumps({"model": model, "ids": parsed_ids, "success": result})
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_delete(model: str, ids: Any = "[]") -> str:
-    """Delete records from a model. USE WITH CAUTION.
+    """Delete records from a model. Requires non-empty list of IDs.
 
     Args:
         model: Model name
         ids: JSON array of record IDs to delete
     """
     client = get_client()
-    parsed_ids = _parse_json(ids)
+    parsed_ids = _parse_ids(ids)
+    if not parsed_ids:
+        return json.dumps({"error": "No record IDs provided — refusing to delete nothing"})
     result = client.unlink(model, parsed_ids)
     return json.dumps({"model": model, "deleted_ids": parsed_ids, "success": result})
 
 
 @mcp.tool()
+@_odoo_error
 def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") -> str:
-    """Execute any method on an Odoo model (advanced).
+    """Execute a permitted method on an Odoo model.
+
+    Only safe CRM/business methods are allowed. Restricted for security.
 
     Args:
         model: Model name
@@ -475,6 +535,19 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         args: JSON array of positional arguments
         kwargs: JSON object of keyword arguments
     """
+    ALLOWED_METHODS = {
+        "action_set_won", "action_set_lost", "action_set_active",
+        "action_archive", "action_unarchive",
+        "message_post", "message_subscribe", "message_unsubscribe",
+        "toggle_active", "name_search", "name_get",
+        "default_get", "onchange", "read_group",
+    }
+    if method not in ALLOWED_METHODS:
+        return json.dumps({
+            "error": f"Method '{method}' is not in the allowed list",
+            "allowed_methods": sorted(ALLOWED_METHODS),
+        })
+
     client = get_client()
     parsed_args = _parse_json(args)
     parsed_kwargs = _parse_json(kwargs)
@@ -490,4 +563,19 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    mcp.run()
+    import argparse
+    parser = argparse.ArgumentParser(description="Odoo MCP Server")
+    parser.add_argument(
+        "--http", action="store_true",
+        help="Run as HTTP server (streamable-http) instead of stdio",
+    )
+    parser.add_argument("--port", type=int, default=8200, help="HTTP port (default 8200)")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host (default 127.0.0.1)")
+    cli_args = parser.parse_args()
+
+    if cli_args.http:
+        mcp.settings.host = cli_args.host
+        mcp.settings.port = cli_args.port
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run()

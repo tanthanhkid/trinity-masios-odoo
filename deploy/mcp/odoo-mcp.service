@@ -7,11 +7,9 @@ Wants=odoo.service
 Type=simple
 User=root
 WorkingDirectory=/opt/odoo/mcp-server
-Environment=ODOO_URL=http://127.0.0.1:8069
-Environment=ODOO_DB=odoo
-Environment=ODOO_USERNAME=admin
-Environment=ODOO_PASSWORD=admin
-ExecStart=/usr/local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --port 8200
+# Credentials in a restricted file (chmod 600, owned by root)
+EnvironmentFile=/etc/odoo-mcp/credentials
+ExecStart=/root/.local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --port 8200
 Restart=on-failure
 RestartSec=5
 

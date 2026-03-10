@@ -1,0 +1,170 @@
+<mxfile>
+  <diagram name="Odoo MCP + OpenClaw Architecture" id="arch">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="&lt;b&gt;Trinity Masios Odoo — System Architecture&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;fontSize=20;" vertex="1" parent="1">
+          <mxGeometry x="450" y="20" width="500" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ OPENCLAW ZONE ============ -->
+        <mxCell id="oc_zone" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#43A047;dashed=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="440" height="380" as="geometry"/>
+        </mxCell>
+        <mxCell id="oc_label" value="&lt;b&gt;🦞 OpenClaw (Any Machine)&lt;/b&gt;" style="text;html=1;align=left;fontSize=14;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="60" y="95" width="250" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- OpenClaw Agents -->
+        <mxCell id="agent_ben" value="&lt;b&gt;BEN&lt;/b&gt;&lt;br&gt;Video Render" style="shape=person;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="140" width="80" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent_bob" value="&lt;b&gt;BOB&lt;/b&gt;&lt;br&gt;Manager" style="shape=person;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="160" y="140" width="80" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent_bill" value="&lt;b&gt;BILL&lt;/b&gt;&lt;br&gt;Programmer" style="shape=person;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#388E3C;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="260" y="140" width="80" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent_new" value="&lt;b&gt;New Agent&lt;/b&gt;&lt;br&gt;(Any)" style="shape=person;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#388E3C;strokeDasharray=5;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="140" width="80" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Skill -->
+        <mxCell id="skill" value="&lt;b&gt;odoo-crm Skill&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;SKILL.md — teaches agents&lt;br&gt;models, fields, domain syntax,&lt;br&gt;workflows, tool usage&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=11;size=14;" vertex="1" parent="1">
+          <mxGeometry x="60" y="250" width="190" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- mcporter -->
+        <mxCell id="mcporter" value="&lt;b&gt;mcporter CLI&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;~/.mcporter/mcporter.json&lt;br&gt;mcporter call odoo.&amp;lt;tool&amp;gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="280" y="260" width="180" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Setup box -->
+        <mxCell id="setup_box" value="&lt;b&gt;Setup (2 commands):&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;1. mcporter config add odoo http://...8200/mcp&lt;br&gt;2. cp skill → ~/.openclaw/skills/odoo-crm&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;fontSize=10;size=14;" vertex="1" parent="1">
+          <mxGeometry x="60" y="360" width="400" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrows from agents to skill/mcporter -->
+        <mxCell id="a2s1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#388E3C;" edge="1" source="agent_bill" target="mcporter" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a2s2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#388E3C;dashed=1;" edge="1" source="agent_bob" target="mcporter" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="skill_arrow" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#F9A825;dashed=1;" edge="1" source="skill" target="mcporter" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ NETWORK ============ -->
+        <mxCell id="net_arrow" value="&lt;b&gt;HTTP&lt;/b&gt;&lt;br&gt;port 8200" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#1565C0;strokeWidth=3;fontSize=11;" edge="1" source="mcporter" target="mcp_server" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="540" y="290"/>
+              <mxPoint x="540" y="190"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============ CLAUDE CODE ZONE ============ -->
+        <mxCell id="cc_zone" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;dashed=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="490" width="440" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="cc_label" value="&lt;b&gt;🤖 Claude Code (This Machine)&lt;/b&gt;" style="text;html=1;align=left;fontSize=14;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="60" y="495" width="300" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="cc_mcp" value="&lt;b&gt;.mcp.json&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Auto-loads MCP server&lt;br&gt;uv run --with mcp python3 server.py&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="535" width="200" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="cc_memory" value="&lt;b&gt;Memory + SQLite&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;MEMORY.md, hooks,&lt;br&gt;smart-memory.db&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1976D2;fontSize=10;size=10;" vertex="1" parent="1">
+          <mxGeometry x="290" y="530" width="120" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="cc_to_mcp" value="&lt;b&gt;stdio&lt;/b&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#1565C0;strokeWidth=2;fontSize=10;" edge="1" source="cc_mcp" target="mcp_server" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="160" y="470"/>
+              <mxPoint x="540" y="470"/>
+              <mxPoint x="540" y="240"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============ SERVER ZONE ============ -->
+        <mxCell id="srv_zone" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;dashed=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="590" y="90" width="530" height="550" as="geometry"/>
+        </mxCell>
+        <mxCell id="srv_label" value="&lt;b&gt;🖥️ Ubuntu Server (103.72.97.51)&lt;/b&gt;" style="text;html=1;align=left;fontSize=14;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="610" y="95" width="350" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- MCP Server -->
+        <mxCell id="mcp_server" value="&lt;b&gt;Odoo MCP Server&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;server.py (FastMCP)&lt;br&gt;HTTP :8200 / stdio&lt;br&gt;systemd: odoo-mcp.service&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=12;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="630" y="140" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- 13 Tools -->
+        <mxCell id="tools" value="&lt;b&gt;13 MCP Tools&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;• odoo_list_models&lt;br&gt;• odoo_model_fields&lt;br&gt;• odoo_model_access&lt;br&gt;• odoo_model_views&lt;br&gt;• odoo_crm_stages&lt;br&gt;• odoo_crm_lead_summary&lt;br&gt;• odoo_search_read&lt;br&gt;• odoo_count&lt;br&gt;• odoo_create / write / delete&lt;br&gt;• odoo_execute&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F9A825;fontSize=10;size=14;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="870" y="130" width="220" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="mcp_to_tools" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#E65100;" edge="1" source="mcp_server" target="tools" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- XML-RPC arrow -->
+        <mxCell id="xmlrpc" value="&lt;b&gt;XML-RPC&lt;/b&gt;&lt;br&gt;/xmlrpc/2/object" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#E65100;strokeWidth=3;fontSize=10;" edge="1" source="mcp_server" target="odoo" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Odoo -->
+        <mxCell id="odoo" value="&lt;b&gt;Odoo 18.0 Community&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;HTTP :8069 / Longpoll :8072&lt;br&gt;3 workers, systemd&lt;br&gt;/opt/odoo/odoo-server/&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8A65;strokeColor=#BF360C;fontSize=12;fontColor=#FFFFFF;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="630" y="300" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- CRM Module -->
+        <mxCell id="crm" value="&lt;b&gt;CRM Module&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;20 models&lt;br&gt;crm.lead (110 fields)&lt;br&gt;Pipeline: New → Qualified&lt;br&gt;→ Proposition → Won&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFAB91;strokeColor=#BF360C;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="870" y="340" width="210" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="odoo_crm" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#BF360C;" edge="1" source="odoo" target="crm" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Nginx -->
+        <mxCell id="nginx" value="&lt;b&gt;Nginx&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;:80 → :8069&lt;br&gt;/websocket → :8072&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="870" y="440" width="130" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="nginx_odoo" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#E65100;dashed=1;" edge="1" source="nginx" target="odoo" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- PostgreSQL -->
+        <mxCell id="pg" value="&lt;b&gt;PostgreSQL 16&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;DB: odoo&lt;br&gt;User: odoo (md5)&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=11;size=12;" vertex="1" parent="1">
+          <mxGeometry x="630" y="440" width="130" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="odoo_pg" value="ORM" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#BF360C;strokeWidth=2;fontSize=10;" edge="1" source="odoo" target="pg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Custom Addons -->
+        <mxCell id="addons" value="&lt;b&gt;Custom Addons&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;/opt/odoo/custom-addons/&lt;/font&gt;" style="shape=folder;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;fontSize=10;tabWidth=60;tabHeight=15;" vertex="1" parent="1">
+          <mxGeometry x="630" y="550" width="160" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Browser -->
+        <mxCell id="browser" value="&lt;b&gt;👤 Browser&lt;/b&gt;&lt;br&gt;http://103.72.97.51" style="shape=mxgraph.mockup.containers.browserWindow;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=10;mainText=;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="440" width="200" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="browser_nginx" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666666;dashed=1;" edge="1" source="browser" target="nginx" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;━━ Direct connection&lt;br&gt;┄┄ Indirect / optional&lt;br&gt;&lt;font color=&quot;#1565C0&quot;&gt;■&lt;/font&gt; Claude Code / MCP&lt;br&gt;&lt;font color=&quot;#388E3C&quot;&gt;■&lt;/font&gt; OpenClaw&lt;br&gt;&lt;font color=&quot;#E65100&quot;&gt;■&lt;/font&gt; Server" style="text;html=1;align=left;fontSize=10;fillColor=#FAFAFA;strokeColor=#BDBDBD;rounded=1;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="90" width="160" height="120" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
