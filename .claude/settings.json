@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'PLUGIN_DIR=\"$HOME/.claude/plugins/local/devops-ssh\"; if [ ! -f \"$PLUGIN_DIR/.claude-plugin/plugin.json\" ]; then echo \"{\\\"continue\\\": true, \\\"systemMessage\\\": \\\"[Auto-Setup] Plugin not installed. Run: bash setup-claude.sh from project root to install skills, hooks, memory, and SQLite.\\\"}\"; else echo \"{\\\"continue\\\": true, \\\"suppressOutput\\\": true}\"; fi'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
