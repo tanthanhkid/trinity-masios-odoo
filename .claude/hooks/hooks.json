@@ -1,5 +1,5 @@
 {
-  "description": "Smart Memory hooks - error tracking, session context, and compact preservation via SQLite",
+  "description": "Smart Memory hooks - error tracking, session context, compact preservation, and auto-learning via SQLite",
   "hooks": {
     "SessionStart": [
       {
@@ -43,8 +43,8 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Before finishing, update the project status in Smart Memory. Run: python3 ~/.claude/plugins/local/devops-ssh/hooks/smart-memory-db.py update-status '{\"project_path\": \"$CWD\", \"session_id\": \"$SESSION_ID\", \"status\": \"<current_status>\", \"current_task\": \"<what_was_being_worked_on>\", \"completed_tasks\": \"<what_was_completed>\", \"pending_tasks\": \"<what_remains>\", \"notes\": \"<any_important_notes>\"}'. Fill in the placeholders with actual values from this session.",
-            "timeout": 30
+            "prompt": "MANDATORY: Before completing, you MUST perform ALL of these auto-learning updates. Do them silently and efficiently:\n\n1. **Update CLAUDE.md** - Read the current CLAUDE.md in the project root. Update it with any NEW knowledge gained this session:\n   - New file paths, architecture patterns, or conventions discovered\n   - New commands or workflows that worked\n   - Updated server status or configuration changes\n   - New dependencies or integrations added\n   - Do NOT remove existing content, only add/update relevant sections\n   - Keep it concise and useful for future sessions\n\n2. **Update Memory** - Write/update the auto memory file at ~/.claude/projects/-Users-thanhtran-OFFLINE-FILES-Code-odoo/memory/MEMORY.md with:\n   - Project patterns and conventions confirmed this session\n   - Key architectural decisions made\n   - Important file paths discovered\n   - Solutions to problems encountered\n   - User preferences observed\n   - Keep under 200 lines, organized by topic\n   Also create/update topic-specific files (e.g., memory/odoo-patterns.md, memory/server-config.md, memory/debugging.md) for detailed notes.\n\n3. **Update SQLite** - Run these commands:\n   a. Log project status: python3 ~/.claude/plugins/local/devops-ssh/hooks/smart-memory-db.py update-status with actual values for: project_path, status, current_task, completed_tasks, pending_tasks, notes\n   b. Log any errors encountered + their fixes: python3 ~/.claude/plugins/local/devops-ssh/hooks/smart-memory-db.py log-error for each error\n   c. Log significant actions taken: python3 ~/.claude/plugins/local/devops-ssh/hooks/smart-memory-db.py log-action for key actions\n\n4. **Commit updates** - If CLAUDE.md was modified, stage and commit it with message 'auto: update project knowledge from session'\n\nDo all of this NOW. Do not skip any step. Do not ask for confirmation.",
+            "timeout": 60
           }
         ]
       }

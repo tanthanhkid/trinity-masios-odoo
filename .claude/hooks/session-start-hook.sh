@@ -1,6 +1,5 @@
 #!/bin/bash
-# SessionStart hook: Load project context from SQLite on every new session
-# Also runs on resume, clear, compact events
+# SessionStart hook: Load project context from SQLite + memory on every new session
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DB_SCRIPT="$SCRIPT_DIR/smart-memory-db.py"
@@ -27,49 +26,66 @@ db.commit()
 db.close()
 " 2>/dev/null
 
-# Get context summary
+# Get SQLite context
 CONTEXT=$(python3 "$DB_SCRIPT" get-context "$PROJECT_PATH" 2>/dev/null)
 
-# Build system message
-if [ -n "$CONTEXT" ] && [ "$CONTEXT" != "{}" ]; then
-    STATUS=$(echo "$CONTEXT" | python3 -c "
-import sys, json
-ctx = json.load(sys.stdin)
-parts = []
+# Build comprehensive system message
+MSG=$(python3 -c "
+import sys, json, os
 
-# Current status
-s = ctx.get('current_status')
-if s and isinstance(s, dict):
-    parts.append(f\"Project Status: {s.get('status','unknown')}\")
-    if s.get('current_task'):
-        parts.append(f\"Current Task: {s['current_task']}\")
-    if s.get('pending_tasks'):
-        parts.append(f\"Pending: {s['pending_tasks']}\")
-    if s.get('notes'):
-        parts.append(f\"Notes: {s['notes']}\")
+parts = ['[Smart Memory - Session Context Loaded]']
 
-# Recent actions
-actions = ctx.get('recent_actions', [])
-if actions:
-    parts.append('Recent Actions:')
-    for a in actions[:5]:
-        parts.append(f\"  - [{a.get('action_type','')}] {a.get('description','')}\")
+# 1. SQLite context
+try:
+    ctx = json.loads('''$CONTEXT''') if '''$CONTEXT''' else {}
 
-# Error patterns
-patterns = ctx.get('error_patterns', [])
-if patterns:
-    parts.append('Known Error Patterns (with fixes):')
-    for p in patterns[:5]:
-        parts.append(f\"  - {p.get('error_type','')} (x{p.get('count',0)}): fix={p.get('last_fix','')}\")
+    s = ctx.get('current_status')
+    if s and isinstance(s, dict):
+        status_line = f\"Project: {s.get('status','unknown')}\"
+        if s.get('current_task'):
+            status_line += f\" | Task: {s['current_task']}\"
+        parts.append(status_line)
+        if s.get('completed_tasks'):
+            parts.append(f\"Completed: {s['completed_tasks']}\")
+        if s.get('pending_tasks'):
+            parts.append(f\"Pending: {s['pending_tasks']}\")
+        if s.get('notes'):
+            parts.append(f\"Notes: {s['notes']}\")
 
-print('\n'.join(parts) if parts else '')
+    # Error patterns with fixes
+    patterns = ctx.get('error_patterns', [])
+    if patterns:
+        parts.append('Known fixes:')
+        for p in patterns[:8]:
+            if p.get('last_fix'):
+                parts.append(f\"  {p['error_type']}(x{p['count']}): {p['last_fix'][:150]}\")
+
+    # Recent actions
+    actions = ctx.get('recent_actions', [])
+    if actions:
+        parts.append('Recent: ' + '; '.join(f\"{a['action_type']}: {a['description'][:80]}\" for a in actions[:5]))
+
+except:
+    pass
+
+# 2. Check for memory files
+memory_dir = os.path.expanduser('~/.claude/projects/-Users-thanhtran-OFFLINE-FILES-Code-odoo/memory')
+if os.path.isdir(memory_dir):
+    memory_files = [f for f in os.listdir(memory_dir) if f.endswith('.md') and f != 'MEMORY.md']
+    if memory_files:
+        parts.append(f\"Memory files available: {', '.join(memory_files)}\")
+
+# 3. Remind about auto-learning
+parts.append('Auto-learning active: CLAUDE.md + memory + SQLite will be updated when session ends.')
+
+print('\n'.join(parts))
 " 2>/dev/null)
 
-    if [ -n "$STATUS" ]; then
-        echo "{\"continue\": true, \"suppressOutput\": true, \"systemMessage\": \"[Smart Memory] Project context loaded from SQLite:\\n$STATUS\"}"
-        exit 0
-    fi
+if [ -n "$MSG" ]; then
+    # Escape for JSON
+    MSG_ESCAPED=$(echo "$MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))" 2>/dev/null)
+    echo "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": $MSG_ESCAPED}"
+else
+    echo '{"continue": true, "suppressOutput": true}'
 fi
-
-echo '{"continue": true, "suppressOutput": true}'
 exit 0
