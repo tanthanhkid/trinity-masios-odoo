@@ -1,0 +1,3 @@
+[submodule "odoo-server"]
+	path = odoo-server
+	url = https://github.com/odoo/odoo.git
