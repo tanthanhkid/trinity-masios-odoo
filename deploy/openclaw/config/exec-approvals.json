@@ -5,9 +5,12 @@
       "allowlist": [
         {"pattern": "mcporter"},
         {"pattern": "mcporter call odoo.*"},
+        {"pattern": "python3 *send_pdf*"},
+        {"pattern": "rm -f /tmp/*"},
         {"pattern": "base64 *"},
         {"pattern": "curl *api.telegram.org*"},
-        {"pattern": "jq *"}
+        {"pattern": "jq *"},
+        {"pattern": "cat /tmp/*"}
       ]
     }
   }
