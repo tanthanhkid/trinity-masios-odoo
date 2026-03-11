@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "agents": {
+    "*": {
+      "allowlist": [
+        {"pattern": "mcporter"},
+        {"pattern": "mcporter call odoo.*"}
+      ]
+    }
+  }
+}

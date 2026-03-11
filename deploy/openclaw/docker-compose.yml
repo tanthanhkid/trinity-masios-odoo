@@ -1,0 +1,27 @@
+services:
+  openclaw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-agent
+    restart: unless-stopped
+    ports:
+      - "${OPENCLAW_PORT:-18789}:18789"
+    environment:
+      - ALIBABA_API_KEY=${ALIBABA_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+      - ODOO_MCP_URL=${ODOO_MCP_URL:-http://103.72.97.51:8200/sse}
+      - ODOO_MCP_TOKEN=${ODOO_MCP_TOKEN}
+    volumes:
+      - openclaw-data:/home/openclaw/.openclaw/agents
+      - openclaw-memory:/home/openclaw/.openclaw/workspace/memory
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:18789/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  openclaw-data:
+  openclaw-memory:

@@ -28,10 +28,11 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - Real-time bridge to Odoo via XML-RPC (`.mcp.json` → `mcp/odoo-server/server.py`)
 - Credentials in `.env.local` (gitignored), template in `.env.example`
 - Server-side creds: `/etc/odoo-mcp/credentials` (chmod 600)
-- 13 tools: introspect models/fields/access/views, CRUD, CRM helpers, execute (allowlisted)
+- 24 tools: introspect models/fields/access/views, CRUD, CRM helpers, sales/invoicing, credit control, dashboard, execute (allowlisted)
 - Use `odoo_model_fields` to get field types, constraints, relations for any model
 - Use `odoo_list_models` with filter to discover models (e.g. filter="crm")
 - Requires `uv` (Python package runner) — no global install needed
+- Inside Docker containers, `mcporter` CLI must be installed for OpenClaw agents to call MCP tools
 
 ### Authentication
 - **stdio mode** (Claude Code): No token needed — runs locally
@@ -59,12 +60,39 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - Skill for agents: `deploy/mcp/openclaw-skill/SKILL.md`
 - mcporter with auth: `mcporter config add odoo http://server:8200/sse --header "Authorization=Bearer <token>" --scope home`
 
+### Docker Deployment (`deploy/openclaw/`)
+- Dockerized OpenClaw bots with template-based configuration
+- Config templates: `config/openclaw.template.json`, `config/mcporter.template.json`
+- `entrypoint.sh` injects env vars (TELEGRAM_BOT_TOKEN, ODOO_URL, etc.) at container startup via `sed` replacement
+- Environment variables passed through `docker-compose.yml` and `.env` file
+- GLM-5 is the best-performing model for tool-calling tasks with OpenClaw
+
 ### Modes
 - **stdio** (Claude Code): `.mcp.json` → `uv run` → local process (no token needed)
 - **HTTP** (OpenClaw remote): `http://server:8200/sse` → mcporter connects (bearer token required)
 
+## Mac Deploy Machine (OpenClaw Docker Host)
+- **IP**: 100.81.203.48 (Tailscale)
+- **User**: masios
+- **Password**: 19112003
+- **OS**: macOS 26.3, Apple Silicon (ARM64), Mac Studio
+- **Docker**: OrbStack v2.0.5, Docker 29.2.0
+- **Deploy paths**:
+  - Bot 1: `~/openclaw-odoo/` (port 18789) — Telegram bot `@hdxthanhtt4bot`
+  - Bot 2: `~/openclaw-odoo-2/` (port 18790) — Telegram bot `@MASIBIO_bot`
+- **Telegram whitelist**: `2048339435` (CEO), `1481072032`
+
+## MCP Tools (24 total)
+### Existing (13): server_info, list_models, model_fields, model_access, model_views, crm_stages, crm_lead_summary, search_read, count, create, write, delete, execute
+### Added (11): sale_order_summary, create_sale_order, confirm_sale_order, invoice_summary, create_invoice_from_so, create_customer, customer_credit_status, customer_set_classification, customers_exceeding_credit, dashboard_kpis, pipeline_by_stage
+
+## Custom Modules Deployed
+- `masios_credit_control` — Customer classification (new/old), credit limits, debt tracking
+- `masios_dashboard` — CEO dashboard at `/dashboard` with KPIs, pipeline, orders, invoices
+
 ## Conventions
-- Use `sshpass` for SSH connections to this server
+- Use `sshpass` for SSH connections to Odoo server
+- Use `ssh masios@100.81.203.48` for Mac deploy machine (password: 19112003)
 - Always backup before destructive operations
 - Log errors and fixes to Smart Memory SQLite
 - Custom modules go in `/opt/odoo/custom-addons/`

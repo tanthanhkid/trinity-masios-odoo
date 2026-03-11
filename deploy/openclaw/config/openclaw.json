@@ -1,0 +1,63 @@
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "alibaba-coding": {
+        "baseUrl": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic",
+        "apiKeyEnv": "ALIBABA_API_KEY",
+        "api": "anthropic-messages",
+        "models": [
+          {"id": "qwen3.5-plus", "name": "Qwen 3.5 Plus"},
+          {"id": "glm-5", "name": "GLM-5"},
+          {"id": "kimi-k2.5", "name": "Kimi K2.5"},
+          {"id": "minimax-m2.5", "name": "MiniMax M2.5"}
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "alibaba-coding/glm-5"
+      },
+      "workspace": "/home/openclaw/.openclaw/workspace",
+      "memorySearch": {"enabled": false},
+      "compaction": {"mode": "safeguard"},
+      "maxConcurrent": 10,
+      "subagents": {"maxConcurrent": 20}
+    }
+  },
+  "tools": {
+    "profile": "full"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "dmPolicy": "pairing",
+      "botTokenEnv": "TELEGRAM_BOT_TOKEN",
+      "groupPolicy": "open",
+      "streaming": "partial"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "tokenEnv": "OPENCLAW_GATEWAY_TOKEN"
+    },
+    "tailscale": {
+      "mode": "off"
+    }
+  }
+}

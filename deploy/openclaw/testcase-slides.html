@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kiểm thử AI Agent Odoo - OpenClaw | Masi OS</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --accent:#E8613C;
+    --accent-light:#FDECE6;
+    --accent-dark:#C94E2E;
+    --bg:#F4F5F7;
+    --chat-bg:#E8E8E8;
+    --user-bubble:#E8613C;
+    --user-text:#fff;
+    --bot-bubble:#fff;
+    --bot-text:#222;
+    --shadow:0 2px 12px rgba(0,0,0,.08);
+    --radius:18px;
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  html,body{height:100%;font-family:var(--font);background:#1a1a2e;color:#333;overflow:hidden}
+
+  /* Slide container */
+  .deck{position:relative;width:100%;height:100%;overflow:hidden}
+  .slide{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px;
+    opacity:0;pointer-events:none;
+    transition:opacity .4s ease,transform .4s ease;
+    transform:translateX(60px);
+    background:var(--bg);
+  }
+  .slide.active{opacity:1;pointer-events:auto;transform:translateX(0)}
+  .slide.prev{transform:translateX(-60px)}
+
+  /* Cover & Summary slides */
+  .slide-cover,.slide-summary{
+    background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
+    color:#fff;text-align:center;
+  }
+  .slide-cover h1{font-size:2.4em;margin-bottom:12px;background:linear-gradient(90deg,var(--accent),#F5A623);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .slide-cover h2{font-size:1.2em;font-weight:400;color:#bbb;margin-bottom:32px}
+  .slide-cover .cover-details{display:flex;gap:24px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+  .slide-cover .cover-badge{background:rgba(232,97,60,.15);border:1px solid rgba(232,97,60,.3);border-radius:12px;padding:12px 20px;font-size:.95em;color:#eee}
+  .brand-logo{font-size:3.2em;margin-bottom:8px}
+  .brand-name{font-size:1em;color:var(--accent);font-weight:700;letter-spacing:2px;margin-bottom:24px}
+
+  /* Test case slide */
+  .tc-slide{padding:16px 24px}
+  .tc-header{
+    width:100%;max-width:720px;
+    display:flex;align-items:center;gap:12px;
+    margin-bottom:12px;
+  }
+  .tc-number{
+    background:var(--accent);color:#fff;
+    width:36px;height:36px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:.95em;flex-shrink:0;
+  }
+  .tc-title{font-size:1.15em;font-weight:600;color:#333}
+
+  /* Chat container */
+  .chat-wrap{
+    width:100%;max-width:720px;
+    flex:1;
+    background:linear-gradient(180deg,#DCE4E8 0%,#C8D6DC 100%);
+    border-radius:16px;
+    padding:16px 12px;
+    overflow-y:auto;
+    display:flex;flex-direction:column;gap:8px;
+    box-shadow:var(--shadow);
+    position:relative;
+  }
+  .chat-wrap::before{
+    content:'';position:absolute;inset:0;
+    background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000' fill-opacity='.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    border-radius:16px;pointer-events:none;
+  }
+
+  /* Bubbles */
+  .msg{display:flex;align-items:flex-end;gap:6px;position:relative;z-index:1;max-width:92%}
+  .msg-user{align-self:flex-end;flex-direction:row-reverse}
+  .msg-bot{align-self:flex-start}
+  .msg-avatar{
+    width:30px;height:30px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;flex-shrink:0;
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);
+  }
+  .msg-bubble{
+    padding:8px 12px;border-radius:var(--radius);
+    position:relative;line-height:1.45;font-size:.88em;
+    box-shadow:0 1px 2px rgba(0,0,0,.08);
+    max-width:calc(100% - 44px);
+  }
+  .msg-user .msg-bubble{
+    background:var(--user-bubble);color:var(--user-text);
+    border-bottom-right-radius:4px;
+  }
+  .msg-bot .msg-bubble{
+    background:var(--bot-bubble);color:var(--bot-text);
+    border-bottom-left-radius:4px;
+  }
+  .msg-time{font-size:.65em;color:rgba(0,0,0,.35);margin-top:2px;text-align:right}
+  .msg-user .msg-time{color:rgba(255,255,255,.6)}
+
+  /* Tables inside bubbles */
+  .msg-bubble table{
+    width:100%;border-collapse:collapse;margin:6px 0;font-size:.9em;
+  }
+  .msg-bubble th,.msg-bubble td{
+    padding:3px 8px;text-align:left;border-bottom:1px solid #eee;
+  }
+  .msg-bubble th{font-weight:600;color:#555;font-size:.85em}
+  .msg-bubble .section-title{font-weight:600;margin:8px 0 4px;color:#333}
+  .msg-bubble .status-good{color:#27AE60}
+  .msg-bubble .note{margin-top:6px;padding:6px 8px;background:#FFF8E1;border-radius:8px;font-size:.88em;color:#795548}
+  .msg-bubble ul{margin:4px 0 4px 16px;padding:0}
+  .msg-bubble li{margin:2px 0}
+
+  /* Navigation */
+  .nav-bar{
+    position:fixed;bottom:0;left:0;right:0;
+    display:flex;align-items:center;justify-content:center;gap:12px;
+    padding:12px 24px;
+    background:rgba(26,26,46,.92);backdrop-filter:blur(8px);
+    z-index:100;
+  }
+  .nav-btn{
+    background:var(--accent);color:#fff;border:none;
+    padding:8px 20px;border-radius:8px;cursor:pointer;
+    font-size:.9em;font-weight:600;
+    transition:background .2s;
+  }
+  .nav-btn:hover{background:var(--accent-dark)}
+  .nav-btn:disabled{opacity:.35;cursor:default}
+  .nav-dots{display:flex;gap:6px;align-items:center}
+  .nav-dot{
+    width:8px;height:8px;border-radius:50%;
+    background:rgba(255,255,255,.25);border:none;cursor:pointer;
+    transition:all .2s;padding:0;
+  }
+  .nav-dot.active{background:var(--accent);transform:scale(1.3)}
+  .slide-indicator{color:rgba(255,255,255,.5);font-size:.85em;min-width:48px;text-align:center}
+
+  /* Summary slide */
+  .summary-content{max-width:800px;text-align:left}
+  .summary-content h2{font-size:1.8em;margin-bottom:20px;text-align:center;background:linear-gradient(90deg,var(--accent),#F5A623);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .summary-table{width:100%;border-collapse:collapse;margin:16px 0}
+  .summary-table th,.summary-table td{padding:8px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,.1)}
+  .summary-table th{color:var(--accent);font-size:.85em;text-transform:uppercase;letter-spacing:1px}
+  .summary-table td{color:#ddd;font-size:.9em}
+  .summary-badge{display:inline-block;padding:2px 10px;border-radius:6px;font-size:.8em;font-weight:600}
+  .badge-pass{background:rgba(39,174,96,.2);color:#2ECC71}
+  .tools-list{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+  .tool-chip{background:rgba(232,97,60,.15);border:1px solid rgba(232,97,60,.25);color:#eee;padding:3px 10px;border-radius:6px;font-size:.78em;font-family:monospace}
+  .cta-box{
+    margin-top:24px;padding:20px;text-align:center;
+    background:rgba(232,97,60,.1);border:1px solid rgba(232,97,60,.3);border-radius:12px;
+  }
+  .cta-box p{color:#ccc;margin:4px 0;font-size:.95em}
+  .cta-box .bot-name{color:var(--accent);font-weight:700;font-size:1.05em}
+  .summary-note{color:#aaa;font-size:.88em;margin-top:12px;font-style:italic;text-align:center}
+
+  /* Print */
+  @media print{
+    html,body{overflow:visible;height:auto;background:#fff}
+    .nav-bar{display:none}
+    .slide{
+      position:relative;opacity:1;pointer-events:auto;transform:none;
+      page-break-after:always;min-height:100vh;
+    }
+    .slide-cover,.slide-summary{background:#1a1a2e !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .chat-wrap{break-inside:avoid}
+  }
+
+  /* Responsive */
+  @media(max-width:600px){
+    .slide-cover h1{font-size:1.6em}
+    .tc-header{flex-wrap:wrap}
+    .msg-bubble{font-size:.82em}
+    .nav-bar{padding:8px 12px;gap:8px}
+    .summary-content{padding:0 8px}
+  }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck"></div>
+
+<div class="nav-bar">
+  <button class="nav-btn" id="prevBtn" onclick="go(-1)">&#9664; Trước</button>
+  <div class="nav-dots" id="dots"></div>
+  <span class="slide-indicator" id="indicator">1/12</span>
+  <button class="nav-btn" id="nextBtn" onclick="go(1)">Sau &#9654;</button>
+</div>
+
+<script>
+// ============= SLIDE DATA =============
+const slides = [
+  // 0 - Cover
+  { type:'cover' },
+  // 1-10 - Test Cases
+  {
+    tc:1, title:'Kiểm tra kết nối hệ thống',
+    userTime:'13:40', botTime:'13:41',
+    user:'Kiểm tra kết nối hệ thống Odoo, cho tôi thông tin server',
+    bot:`<div>Kết nối hệ thống Odoo đang hoạt động tốt! ✅</div>
+<div class="section-title">Thông tin server:</div>
+<table><tr><td>Trạng thái</td><td><b>Đã kết nối</b></td></tr>
+<tr><td>Phiên bản Odoo</td><td><b>18.0</b></td></tr></table>
+<div>Hệ thống đã sẵn sàng để sử dụng.</div>`
+  },
+  {
+    tc:2, title:'Dashboard KPIs cho CEO',
+    userTime:'13:42', botTime:'13:43',
+    user:'Cho tôi xem KPI tổng hợp: doanh thu, công nợ, pipeline, leads mới',
+    bot:`<div>📊 <b>Dashboard KPIs - Tháng 3/2026</b></div>
+<table>
+<tr><th>Chỉ số</th><th>Giá trị</th></tr>
+<tr><td>💰 Doanh thu tháng</td><td><b>0 VND</b></td></tr>
+<tr><td>📈 Pipeline Value</td><td><b>0 VND</b></td></tr>
+<tr><td>💳 Tổng công nợ</td><td><b>0 VND</b></td></tr>
+<tr><td>🆕 Leads mới</td><td><b>3 leads</b></td></tr>
+</table>
+<div class="section-title">🔄 Pipeline theo giai đoạn:</div>
+<table>
+<tr><th>Giai đoạn</th><th>Số lượng</th><th>Giá trị</th></tr>
+<tr><td>New</td><td>3</td><td>0 VND</td></tr>
+<tr><td>Qualified</td><td>0</td><td>0 VND</td></tr>
+<tr><td>Proposition</td><td>0</td><td>0 VND</td></tr>
+<tr><td>Won</td><td>0</td><td>0 VND</td></tr>
+</table>
+<div class="note">⚠️ Nhận xét: Hệ thống đang ở giai đoạn khởi tạo. 3 leads ở giai đoạn "New" cần qualify.</div>`
+  },
+  {
+    tc:3, title:'CRM Pipeline',
+    userTime:'13:44', botTime:'13:45',
+    user:'Liệt kê pipeline CRM theo từng giai đoạn, có bao nhiêu deals?',
+    bot:`<div>🔄 <b>Pipeline CRM - Tổng hợp theo giai đoạn</b></div>
+<table>
+<tr><th>Giai đoạn</th><th>Số deals</th><th>Giá trị</th></tr>
+<tr><td>🆕 New</td><td>3</td><td>0 VND</td></tr>
+<tr><td>✅ Qualified</td><td>0</td><td>0 VND</td></tr>
+<tr><td>📋 Proposition</td><td>0</td><td>0 VND</td></tr>
+<tr><td>🏆 Won</td><td>0</td><td>0 VND</td></tr>
+</table>
+<div class="section-title">📊 Tổng kết:</div>
+<ul><li>Tổng số deals: <b>3</b></li><li>Tổng giá trị pipeline: <b>0 VND</b></li></ul>
+<div class="note">Đề xuất: 3 deals ở "New" cần được đánh giá và chuyển sang "Qualified".</div>`
+  },
+  {
+    tc:4, title:'Tạo khách hàng mới',
+    userTime:'13:46', botTime:'13:47',
+    user:'Tạo khách hàng mới: Công ty ABC Tech, SĐT 0901234567, email contact@abctech.vn',
+    bot:`<div>✅ <b>Đã tạo khách hàng mới thành công!</b></div>
+<table>
+<tr><th>Thông tin</th><th>Giá trị</th></tr>
+<tr><td>🆔 ID</td><td>14</td></tr>
+<tr><td>📛 Tên</td><td><b>Công ty ABC Tech</b></td></tr>
+<tr><td>📞 SĐT</td><td>0901234567</td></tr>
+<tr><td>📧 Email</td><td>contact@abctech.vn</td></tr>
+<tr><td>🏢 Loại</td><td>Company</td></tr>
+<tr><td>🏷️ Phân loại</td><td>new (khách hàng mới)</td></tr>
+</table>
+<div class="note">⚠️ Lưu ý: KH mới chưa được cấp hạn mức công nợ. Để cấp công nợ, cần đổi phân loại sang "old".</div>`
+  },
+  {
+    tc:5, title:'Kiểm tra công nợ khách hàng',
+    userTime:'13:48', botTime:'13:49',
+    user:'Kiểm tra tình trạng công nợ của khách hàng ABC Tech',
+    bot:`<div>💳 <b>Công nợ - Công ty ABC Tech</b></div>
+<table>
+<tr><th>Thông tin</th><th>Giá trị</th></tr>
+<tr><td>🏷️ Phân loại</td><td>new (khách hàng mới)</td></tr>
+<tr><td>✅ Được phép công nợ</td><td>❌ Không</td></tr>
+<tr><td>💰 Hạn mức tín dụng</td><td>0 VND</td></tr>
+<tr><td>📊 Nợ hiện tại</td><td>0 VND</td></tr>
+<tr><td>💵 Tín dụng khả dụng</td><td>0 VND</td></tr>
+<tr><td>⚠️ Vượt hạn mức</td><td>Không</td></tr>
+</table>
+<div class="note">📝 Nhận xét: KH mới chưa được phép công nợ.</div>`
+  },
+  {
+    tc:6, title:'Đổi phân loại + set credit limit',
+    userTime:'13:50', botTime:'13:51',
+    user:'Đổi khách hàng ABC Tech sang phân loại old, rồi set hạn mức công nợ 50 triệu',
+    bot:`<div>✅ <b>Đã cập nhật thành công!</b></div>
+<div class="section-title">💳 Công nợ - Công ty ABC Tech (sau cập nhật)</div>
+<table>
+<tr><th>Thông tin</th><th>Giá trị</th></tr>
+<tr><td>🏷️ Phân loại</td><td>old ✓</td></tr>
+<tr><td>✅ Được phép công nợ</td><td>✅ Có</td></tr>
+<tr><td>💰 Hạn mức tín dụng</td><td><b>50,000,000 VND</b></td></tr>
+<tr><td>📊 Nợ hiện tại</td><td>0 VND</td></tr>
+<tr><td>💵 Tín dụng khả dụng</td><td><b>50,000,000 VND</b></td></tr>
+</table>
+<div class="section-title">📋 Tóm tắt thay đổi:</div>
+<ul>
+<li>✅ Phân loại: new → old</li>
+<li>✅ Được phép công nợ: Không → Có</li>
+<li>✅ Hạn mức: 0 → 50,000,000 VND</li>
+</ul>
+<div style="margin-top:6px">KH ABC Tech giờ có thể mua chịu tối đa <b>50 triệu VND</b>.</div>`
+  },
+  {
+    tc:7, title:'Liệt kê sản phẩm',
+    userTime:'13:52', botTime:'13:53',
+    user:'Liệt kê sản phẩm có trong hệ thống',
+    bot:`<div>📦 <b>Sản phẩm trong hệ thống</b></div>
+<div style="margin:8px 0;padding:8px 10px;background:#FFF3E0;border-radius:8px">⚠️ Không tìm thấy sản phẩm nào trong hệ thống.</div>
+<div>Hệ thống Odoo hiện tại chưa có sản phẩm.</div>
+<div class="section-title">Để thêm sản phẩm mới:</div>
+<ol style="margin:4px 0 4px 20px"><li>Thêm trực tiếp trong Odoo UI (Inventory → Products)</li><li>Hoặc tôi có thể tạo sản phẩm qua API</li></ol>
+<div style="margin-top:6px">Bạn muốn tạo sản phẩm mới không?</div>`
+  },
+  {
+    tc:8, title:'Tổng quan kinh doanh (Bot 1)',
+    userTime:'13:54', botTime:'13:55',
+    user:'Tổng quan kinh doanh hôm nay: KPI, pipeline, công nợ',
+    bot:`<div>📊 <b>Tổng quan kinh doanh - 11/03/2026</b></div>
+<div class="section-title">🎯 KPIs Tháng 3:</div>
+<table>
+<tr><th>Chỉ tiêu</th><th>Giá trị</th></tr>
+<tr><td>Leads mới</td><td><b>3</b></td></tr>
+<tr><td>Giá trị Pipeline</td><td>0</td></tr>
+<tr><td>Doanh thu tháng</td><td>0</td></tr>
+<tr><td>Tổng công nợ</td><td>0</td></tr>
+</table>
+<div class="section-title">📈 Pipeline CRM:</div>
+<table>
+<tr><th>Giai đoạn</th><th>Số leads</th></tr>
+<tr><td>🆕 New</td><td>3</td></tr>
+<tr><td>✅ Qualified</td><td>0</td></tr>
+<tr><td>📋 Proposition</td><td>0</td></tr>
+<tr><td>🏆 Won</td><td>0</td></tr>
+</table>
+<div style="margin:6px 0">💰 Công nợ: <span class="status-good">✅ Không có KH vượt hạn mức</span></div>
+<div class="note">📝 Tóm tắt: 3 leads tiềm năng cần qualify, không có công nợ xấu.</div>`
+  },
+  {
+    tc:9, title:'Tìm khách hàng',
+    userTime:'13:56', botTime:'13:57',
+    user:'Tìm tất cả khách hàng có trong hệ thống, kèm thông tin công nợ',
+    bot:`<div>👥 <b>Danh sách Khách hàng</b></div>
+<table>
+<tr><th>ID</th><th>Tên</th><th>Phân loại</th><th>Hạn mức</th><th>Công nợ</th></tr>
+<tr><td>14</td><td><b>Công ty ABC Tech</b></td><td>🟢 Old</td><td>50,000,000</td><td>0</td></tr>
+<tr><td>8</td><td>Trinity Masios</td><td>🔵 New</td><td>0</td><td>0</td></tr>
+<tr><td>10</td><td>Test KH MCP</td><td>🔵 New</td><td>0</td><td>0</td></tr>
+<tr><td>7</td><td>tran tan thanh</td><td>🔵 New</td><td>0</td><td>0</td></tr>
+<tr><td>9</td><td>Nguyen Van A</td><td>🔵 New</td><td>0</td><td>0</td></tr>
+</table>
+<div class="section-title">📊 Tóm tắt:</div>
+<table>
+<tr><th>Phân loại</th><th>Số KH</th><th>Tổng hạn mức</th></tr>
+<tr><td>🟢 Old</td><td>1</td><td>50,000,000</td></tr>
+<tr><td>🔵 New</td><td>4+</td><td>0</td></tr>
+</table>
+<div class="note">Nhận xét: ABC Tech là KH duy nhất có hạn mức công nợ.</div>`
+  },
+  {
+    tc:10, title:'Khách hàng vượt hạn mức',
+    userTime:'13:58', botTime:'13:59',
+    user:'Có khách hàng nào đang vượt hạn mức công nợ không?',
+    bot:`<div>✅ <b>Không có khách hàng nào vượt hạn mức công nợ</b></div>
+<div style="margin:6px 0">Kết quả: <b>0</b> khách hàng đang vượt hạn mức.</div>
+<table>
+<tr><th>Khách hàng</th><th>Hạn mức</th><th>Công nợ</th><th>Trạng thái</th></tr>
+<tr><td>Công ty ABC Tech</td><td>50,000,000</td><td>0</td><td class="status-good">✅ Bình thường</td></tr>
+</table>
+<div class="note">Nhận xét: Tất cả khách hàng đều trong tình trạng tài chính tốt.</div>`
+  },
+  // 11 - Summary
+  { type:'summary' }
+];
+
+const total = slides.length;
+let cur = 0;
+
+// Build DOM
+const deck = document.getElementById('deck');
+
+slides.forEach((s, i) => {
+  const div = document.createElement('div');
+  div.className = 'slide' + (i===0?' active':'') + (s.type==='cover'?' slide-cover':'') + (s.type==='summary'?' slide-summary':'') + (!s.type?' tc-slide':'');
+  div.id = 'slide-'+i;
+
+  if(s.type==='cover'){
+    div.innerHTML = `
+      <div class="brand-logo">🦞</div>
+      <div class="brand-name">MASI OS</div>
+      <h1>Kiểm thử AI Agent Odoo — OpenClaw</h1>
+      <h2>Masi OS Business Agent — Kết nối Odoo 18 qua MCP</h2>
+      <div class="cover-details">
+        <div class="cover-badge">🧪 10 Test Cases</div>
+        <div class="cover-badge">🔧 24 MCP Tools</div>
+        <div class="cover-badge">🤖 2 Telegram Bots</div>
+      </div>`;
+  } else if(s.type==='summary'){
+    div.innerHTML = `
+      <div class="summary-content">
+        <h2>🏁 Tổng kết kiểm thử</h2>
+        <table class="summary-table">
+          <tr><th>Test Case</th><th>Kết quả</th></tr>
+          <tr><td>TC1 — Kết nối hệ thống</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC2 — Dashboard KPIs</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC3 — CRM Pipeline</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC4 — Tạo khách hàng</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC5 — Kiểm tra công nợ</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC6 — Đổi phân loại + credit</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC7 — Liệt kê sản phẩm</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC8 — Tổng quan kinh doanh</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC9 — Tìm khách hàng</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+          <tr><td>TC10 — Vượt hạn mức</td><td><span class="summary-badge badge-pass">PASS</span></td></tr>
+        </table>
+        <div style="margin:16px 0;color:#aaa;font-size:.85em">Kết quả: <b style="color:#2ECC71">10/10 PASS</b></div>
+        <div class="section-title" style="color:#ccc;margin-top:16px">🔧 MCP Tools đã kiểm thử:</div>
+        <div class="tools-list">
+          <span class="tool-chip">odoo_server_info</span>
+          <span class="tool-chip">odoo_dashboard_kpis</span>
+          <span class="tool-chip">odoo_pipeline_by_stage</span>
+          <span class="tool-chip">odoo_crm_lead_summary</span>
+          <span class="tool-chip">odoo_create_customer</span>
+          <span class="tool-chip">odoo_customer_credit_status</span>
+          <span class="tool-chip">odoo_customer_set_classification</span>
+          <span class="tool-chip">odoo_write</span>
+          <span class="tool-chip">odoo_search_read</span>
+          <span class="tool-chip">odoo_customers_exceeding_credit</span>
+        </div>
+        <div class="summary-note">Agent tự động chọn đúng tool, trả lời tiếng Việt, format bảng chuyên nghiệp</div>
+        <div class="cta-box">
+          <p style="font-size:1.1em;margin-bottom:8px">🦞 Hãy chat thử với bot trên Telegram!</p>
+          <p><span class="bot-name">@hdxthanhtt4bot</span> — Bot 1 (CEO Dashboard)</p>
+          <p><span class="bot-name">@MASIBIO_bot</span> — Bot 2 (Sales Agent)</p>
+        </div>
+      </div>`;
+  } else {
+    div.innerHTML = `
+      <div class="tc-header">
+        <div class="tc-number">${s.tc}</div>
+        <div class="tc-title">${s.title}</div>
+      </div>
+      <div class="chat-wrap">
+        <div class="msg msg-user">
+          <div class="msg-avatar">👤</div>
+          <div class="msg-bubble">${s.user}<div class="msg-time">${s.userTime} ✓✓</div></div>
+        </div>
+        <div class="msg msg-bot">
+          <div class="msg-avatar">🦞</div>
+          <div class="msg-bubble">${s.bot}<div class="msg-time">${s.botTime}</div></div>
+        </div>
+      </div>`;
+  }
+  deck.appendChild(div);
+});
+
+// Dots
+const dotsEl = document.getElementById('dots');
+for(let i=0;i<total;i++){
+  const d=document.createElement('button');
+  d.className='nav-dot'+(i===0?' active':'');
+  d.onclick=()=>goTo(i);
+  dotsEl.appendChild(d);
+}
+
+function goTo(n){
+  if(n<0||n>=total) return;
+  const prev=document.getElementById('slide-'+cur);
+  prev.classList.remove('active');
+  prev.classList.toggle('prev',n>cur);
+  cur=n;
+  const next=document.getElementById('slide-'+cur);
+  next.classList.remove('prev');
+  next.classList.add('active');
+  document.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===cur));
+  document.getElementById('indicator').textContent=(cur+1)+'/'+total;
+  document.getElementById('prevBtn').disabled=cur===0;
+  document.getElementById('nextBtn').disabled=cur===total-1;
+}
+function go(d){goTo(cur+d)}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') go(1);
+  else if(e.key==='ArrowLeft'||e.key==='ArrowUp') go(-1);
+});
+
+// Touch swipe
+let tx=0;
+deck.addEventListener('touchstart',e=>{tx=e.touches[0].clientX},{passive:true});
+deck.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>50){dx<0?go(1):go(-1)}},{passive:true});
+
+// Init
+goTo(0);
+</script>
+</body>
+</html>

@@ -23,7 +23,7 @@ Luôn dùng Bash tool để chạy:
 mcporter call odoo.<tool_name> key=value
 ```
 
-## 24 Tools có sẵn
+## 23 Tools có sẵn
 
 ### Khi user hỏi "tổng quan / dashboard / doanh thu / KPI"
 ```bash
@@ -100,12 +100,6 @@ mcporter call odoo.odoo_server_info
 mcporter call odoo.odoo_list_models filter=sale
 mcporter call odoo.odoo_model_fields model=sale.order
 mcporter call odoo.odoo_model_access model=sale.order
-mcporter call odoo.odoo_model_views model=sale.order
-```
-
-### Thực thi method tùy chỉnh (advanced)
-```bash
-mcporter call odoo.odoo_execute model=sale.order method=action_confirm 'args=[[ORDER_ID]]'
 ```
 
 ### CRUD tổng quát

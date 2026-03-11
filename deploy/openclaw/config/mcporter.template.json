@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "odoo": {
+      "baseUrl": "__ODOO_MCP_URL__",
+      "headers": {
+        "Authorization": "Bearer __ODOO_MCP_TOKEN__"
+      }
+    }
+  }
+}

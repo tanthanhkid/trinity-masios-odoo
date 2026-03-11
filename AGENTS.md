@@ -1,5 +1,19 @@
 # AI Agent Guide — Trinity Masios Odoo
 
+## Project Status
+
+| Phase | Mô tả | Trạng thái |
+|-------|--------|-----------|
+| Phase 0 | Odoo 18 self-hosted + MCP bridge | Done |
+| Phase 1 | CRM tools + OpenClaw integration | Done |
+| Phase 2 | Sale Order + Invoice tools | Done |
+| Phase 3 | Credit Control module + partner classification | Done |
+| Phase 4 | CEO Dashboard + full test suite | Done |
+| Phase 5 | Hardening (backup, monitoring, alerting) | Pending |
+
+**Test Results:** 10/10 test cases passed, tất cả 24 MCP tools hoạt động.
+Xem chi tiết testcase tại `deploy/openclaw/testcase-slides.pptx` và `deploy/openclaw/testcase-slides.html`.
+
 ## How to Interact with Odoo
 
 You have access to a live Odoo 18.0 instance via MCP tools. Use them to query, create, and modify records in real-time.
@@ -64,7 +78,7 @@ Custom fields added by `masios_credit_control` module:
 - `credit_available`: Monetary computed — credit_limit - outstanding_debt
 - `credit_exceeded`: Boolean computed — True khi vượt hạn mức
 
-## Available MCP Tools (23)
+## Available MCP Tools (24)
 
 ### Discovery & Introspection (6)
 - `odoo_server_info` — Server version and connection info
@@ -76,6 +90,9 @@ Custom fields added by `masios_credit_control` module:
 
 ### CRM (1)
 - `odoo_crm_lead_summary` — All leads/opportunities with optional filters
+
+### Customer (1)
+- `odoo_create_customer` — Tạo khách hàng mới với đầy đủ thông tin (name, email, phone, company_type, classification, credit_limit)
 
 ### Generic CRUD (5)
 - `odoo_search_read` — Query with specific fields and domain filters
@@ -156,6 +173,79 @@ odoo_write(model="crm.lead", ids="[2]", values='{"stage_id":4}')  # Move to Won
   - Generate token: `python3 server.py --generate-token`
   - Token stored in `MCP_API_TOKEN` env var on the server
   - mcporter clients pass it via `--header "Authorization=Bearer <token>"`
+
+## Architecture
+
+```
+Telegram User
+    ↓
+OpenClaw Agent (Docker container)
+    ↓
+mcporter (MCP client)
+    ↓
+MCP HTTP Server :8200 (bearer token auth)
+    ↓
+Odoo XML-RPC :8069
+```
+
+### Infrastructure
+
+| Machine | IP | User | Vai trò |
+|---------|-----|------|---------|
+| Odoo Server | 103.72.97.51 (SSH port 24700) | root | Odoo 18 + MCP HTTP server + PostgreSQL |
+| Mac Deploy | 100.81.203.48 (Tailscale) | masios | OrbStack/Docker — chạy OpenClaw bots |
+
+### Custom Modules Deployed
+
+| Module | Đường dẫn | Mô tả |
+|--------|----------|-------|
+| `masios_credit_control` | `custom-addons/masios_credit_control/` | Credit control + partner classification (new/old), credit limit, outstanding debt |
+| `masios_dashboard` | `custom-addons/masios_dashboard/` | CEO dashboard tại `/dashboard` — KPIs, pipeline chart, top customers |
+
+## OpenClaw Docker Deployment
+
+OpenClaw agents chạy trong Docker containers trên Mac deploy machine. Config tại `deploy/openclaw/`.
+
+### Cấu trúc thư mục
+```
+deploy/openclaw/
+├── Dockerfile
+├── docker-compose.yml
+├── entrypoint.sh
+├── config/
+│   ├── openclaw.template.json    # Template OpenClaw config
+│   ├── mcporter.template.json    # Template mcporter config
+│   ├── exec-approvals.json       # MCP tool auto-approve list
+│   └── workspace/                # Agent workspace
+├── testcase-slides.pptx          # Test case slides (PowerPoint)
+├── testcase-slides.html          # Test case slides (HTML)
+└── gen_testcase_slides.py        # Script tạo slides
+```
+
+### Telegram Bots
+
+| Bot | Username | Port | Mô tả |
+|-----|----------|------|-------|
+| Bot 1 | @hdxthanhtt4bot | 18789 | Dev/test bot |
+| Bot 2 | @MASIBIO_bot | 18790 | Production bot |
+
+### Deploy lên máy mới
+```bash
+# 1. Clone repo
+git clone <repo-url> && cd trinity-masios-odoo
+
+# 2. Cấu hình env
+cd deploy/openclaw/config
+cp openclaw.template.json openclaw.json    # Điền Telegram token, model config
+cp mcporter.template.json mcporter.json    # Điền MCP server URL + bearer token
+
+# 3. Build & run
+cd deploy/openclaw
+docker-compose up -d
+```
+
+### Model khuyến nghị
+**GLM-5** là model tốt nhất cho tool-calling trong OpenClaw. Các model khác có thể gặp lỗi khi gọi MCP tools qua mcporter.
 
 ## Safety Rules
 

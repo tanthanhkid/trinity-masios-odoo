@@ -1584,5 +1584,44 @@
       "type": "boolean",
       "readonly": true
     }
+  },
+  "_mcp_tools": {
+    "_meta": {
+      "total_tools": 24,
+      "description": "MCP tool definitions for Odoo integration"
+    },
+    "odoo_create_customer": {
+      "description": "Create a new customer (res.partner) with simple parameters — no JSON needed.",
+      "parameters": {
+        "name": {
+          "type": "str",
+          "required": true,
+          "description": "Customer name"
+        },
+        "phone": {
+          "type": "str",
+          "required": false,
+          "description": "Phone number"
+        },
+        "email": {
+          "type": "str",
+          "required": false,
+          "description": "Email address"
+        },
+        "company_type": {
+          "type": "str",
+          "required": false,
+          "default": "company",
+          "description": "'company' or 'person'"
+        },
+        "classification": {
+          "type": "str",
+          "required": false,
+          "default": "new",
+          "description": "'new' or 'old'"
+        }
+      },
+      "returns": "JSON with created partner info (id, name, phone, email, company_type, customer_classification)"
+    }
   }
 }

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "odoo": {
+      "baseUrl": "http://103.72.97.51:8200/sse",
+      "headers": {
+        "Authorization": "Bearer ${ODOO_MCP_TOKEN}"
+      }
+    }
+  }
+}
