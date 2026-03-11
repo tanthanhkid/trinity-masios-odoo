@@ -11,37 +11,61 @@ Requires TELEGRAM_BOT_TOKEN env var for sending.
 """
 import sys, json, base64, subprocess, os
 
-data = json.load(sys.stdin)
-pdf = base64.b64decode(data["pdf_base64"])
-filename = data["filename"]
+try:
+    data = json.load(sys.stdin)
+except (json.JSONDecodeError, ValueError):
+    print("Error: Invalid JSON input. Expected PDF data from MCP tool.")
+    sys.exit(1)
+
+if "error" in data:
+    print(f"Error from Odoo: {data['error']}")
+    sys.exit(1)
+
+if "pdf_base64" not in data:
+    print(f"Error: No PDF data received. Keys: {list(data.keys())}")
+    sys.exit(1)
+
+try:
+    pdf_bytes = base64.b64decode(data["pdf_base64"])
+except Exception:
+    print("Error: Invalid base64 PDF data.")
+    sys.exit(1)
+
+filename = data.get("filename", "document.pdf")
 filepath = f"/tmp/{filename}"
 
-with open(filepath, "wb") as f:
-    f.write(pdf)
-print(f"Saved: {filepath} ({len(pdf)} bytes)")
+try:
+    with open(filepath, "wb") as f:
+        f.write(pdf_bytes)
+    print(f"Saved: {filepath} ({len(pdf_bytes)} bytes)")
 
-if len(sys.argv) > 1:
-    chat_id = sys.argv[1]
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not token:
-        print("ERROR: TELEGRAM_BOT_TOKEN not set", file=sys.stderr)
-        sys.exit(1)
-    order_or_inv = data.get("order", data.get("invoice", ""))
-    partner = data.get("partner", "")
-    amount = data.get("amount_total", 0)
-    caption = f"\U0001f4c4 {order_or_inv} - {partner} ({amount:,.0f} VND)"
-    result = subprocess.run([
-        "curl", "-s", "-F", f"chat_id={chat_id}",
-        "-F", f"document=@{filepath}",
-        "-F", f"caption={caption}",
-        f"https://api.telegram.org/bot{token}/sendDocument"
-    ], capture_output=True, text=True)
-    try:
-        resp = json.loads(result.stdout)
-        if resp.get("ok"):
-            print(f"Telegram: OK (message_id: {resp['result']['message_id']})")
-        else:
-            print(f"Telegram: FAILED - {resp}")
-    except json.JSONDecodeError:
-        print(f"Telegram: ERROR - {result.stdout[:200]}", file=sys.stderr)
-    os.remove(filepath)
+    if len(sys.argv) > 1:
+        chat_id = sys.argv[1]
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            print("ERROR: TELEGRAM_BOT_TOKEN not set", file=sys.stderr)
+            sys.exit(1)
+        order_or_inv = data.get("order", data.get("invoice", ""))
+        partner = data.get("partner", "")
+        amount = data.get("amount_total", 0)
+        caption = f"\U0001f4c4 {order_or_inv} - {partner} ({amount:,.0f} VND)"
+        result = subprocess.run([
+            "curl", "-s", "-F", f"chat_id={chat_id}",
+            "-F", f"document=@{filepath}",
+            "-F", f"caption={caption}",
+            f"https://api.telegram.org/bot{token}/sendDocument"
+        ], capture_output=True, text=True)
+        try:
+            resp = json.loads(result.stdout)
+            if resp.get("ok"):
+                print(f"Telegram: OK (message_id: {resp['result']['message_id']})")
+            else:
+                print(f"Telegram: FAILED - {resp}")
+        except json.JSONDecodeError:
+            print(f"Telegram: ERROR - {result.stdout[:200]}", file=sys.stderr)
+finally:
+    if os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass

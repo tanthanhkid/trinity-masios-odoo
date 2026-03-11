@@ -30,7 +30,7 @@
     "elevated": {
       "enabled": true,
       "allowFrom": {
-        "telegram": ["*"]
+        "telegram": ["2048339435", "1481072032"]
       }
     }
   },
@@ -47,9 +47,9 @@
     "telegram": {
       "enabled": true,
       "dmPolicy": "open",
-      "allowFrom": ["*"],
+      "allowFrom": ["2048339435", "1481072032"],
       "groupPolicy": "open",
-      "groupAllowFrom": ["*"],
+      "groupAllowFrom": ["2048339435", "1481072032"],
       "streaming": "partial",
       "botToken": "__TELEGRAM_BOT_TOKEN__"
     }

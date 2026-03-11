@@ -4,14 +4,12 @@
     "*": {
       "allowlist": [
         {"pattern": "mcporter *"},
-        {"pattern": "python3 *"},
+        {"pattern": "python3 /home/openclaw/.openclaw/workspace/send_pdf.py *"},
         {"pattern": "rm -f /tmp/*"},
         {"pattern": "base64 *"},
-        {"pattern": "curl *api.telegram.org*"},
+        {"pattern": "curl -s -F * https://api.telegram.org/*"},
         {"pattern": "jq *"},
-        {"pattern": "cat *"},
         {"pattern": "ls *"},
-        {"pattern": "find *"},
         {"pattern": "head *"},
         {"pattern": "tail *"},
         {"pattern": "wc *"},

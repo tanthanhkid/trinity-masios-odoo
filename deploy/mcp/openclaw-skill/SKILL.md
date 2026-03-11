@@ -135,3 +135,5 @@ mcporter call odoo.odoo_delete model=MODEL 'ids=[ID]'
 - Trả lời bằng tiếng Việt
 - Format kết quả dạng bảng/bullet cho dễ đọc
 - Nếu lỗi, thử lại hoặc giải thích lỗi
+- KHÔNG BAO GIỜ xóa record mà không hỏi user xác nhận trước. Luôn hỏi "Bạn có chắc muốn xóa [tên record]?" và đợi phản hồi.
+- Khi xóa, LUÔN liệt kê cụ thể record nào sẽ bị xóa (tên, ID) trước khi thực hiện.

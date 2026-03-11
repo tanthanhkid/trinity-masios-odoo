@@ -96,6 +96,73 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - `masios_credit_control` — Customer classification (new/old), credit limits, debt tracking
 - `masios_dashboard` — CEO dashboard at `/dashboard` with KPIs, pipeline, orders, invoices
 
+## Git Commit Rules (MANDATORY)
+Every commit MUST have a detailed, well-documented message. Never use vague messages like "fix bug", "update code", or "misc changes".
+
+### Commit Message Format
+```
+<type>(<scope>): <short summary - what changed>
+
+<detailed description - WHY this change was made>
+
+Changes:
+- <specific change 1 with file/function names>
+- <specific change 2 with file/function names>
+- <specific change 3 with file/function names>
+
+<optional: context, trade-offs, or related issues>
+```
+
+### Types
+- `feat` — new feature or capability
+- `fix` — bug fix
+- `refactor` — code restructuring without behavior change
+- `docs` — documentation only
+- `deploy` — deployment, infrastructure, config changes
+- `security` — security fixes or hardening
+- `test` — test additions or fixes
+- `chore` — maintenance, cleanup, dependencies
+
+### Rules
+1. **Subject line**: max 72 chars, imperative mood ("Add X" not "Added X")
+2. **Body**: explain WHY, not just WHAT. Include context, reasoning, trade-offs
+3. **Changes list**: enumerate every significant file/function modified
+4. **Scope**: component affected (e.g. `mcp`, `credit-control`, `dashboard`, `openclaw`, `deploy`)
+5. **No empty bodies**: every commit must have a description beyond the subject line
+6. **Reference issues**: mention related bugs, features, or decisions when applicable
+
+### Examples
+```
+feat(mcp): Add PDF generation tools for sale orders and invoices
+
+Odoo HTTP report engine generates PDFs but requires session-based auth
+(not XML-RPC). Added two new MCP tools that authenticate via /web/session
+and download reports as base64-encoded PDFs.
+
+Changes:
+- mcp/odoo-server/server.py: Add odoo_sale_order_pdf() and odoo_invoice_pdf()
+- mcp/odoo-server/server.py: Add _get_session_and_pdf() helper for HTTP auth
+- deploy/openclaw/config/workspace/send_pdf.py: Telegram Bot API PDF sender
+
+Trade-off: base64 encoding doubles payload size but avoids binary in JSON.
+File-based approach (/tmp) used to handle large payloads.
+```
+
+```
+fix(openclaw): Resolve Telegram gateway ignoring exec-approvals.json
+
+exec-approvals.json only works in LOCAL/CLI mode. Telegram gateway uses
+a separate approval path that requires elevated permissions config.
+
+Changes:
+- deploy/openclaw/entrypoint.sh: Add openclaw config set for elevatedDefault and exec.security
+- CLAUDE.md: Document two-tier approval architecture (CLI vs gateway)
+- AGENTS.md: Add exec approvals section with testing instructions
+
+Root cause: OpenClaw template validation strips non-standard keys from JSON,
+so these must be set via CLI after config generation.
+```
+
 ## Conventions
 - Use `sshpass` for SSH connections to Odoo server
 - Use `ssh masios@100.81.203.48` for Mac deploy machine (password: 19112003)

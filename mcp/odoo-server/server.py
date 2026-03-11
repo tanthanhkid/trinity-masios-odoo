@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import http.cookiejar
 import json
+import logging
 import os
 import secrets
 import sys
@@ -24,6 +25,9 @@ import xmlrpc.client
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger("odoo-mcp")
 
 # MCP SDK
 try:
@@ -63,18 +67,26 @@ def load_config() -> dict:
 def _odoo_error(func):
     """Decorator: catch XML-RPC and connection errors, return structured JSON."""
     def wrapper(*args, **kwargs):
+        logger.info(f"tool={func.__name__} called")
         try:
             return func(*args, **kwargs)
         except xmlrpc.client.Fault as e:
             msg = e.faultString
             if "\n" in msg:
                 msg = msg.strip().split("\n")[-1]
+            logger.error(f"tool={func.__name__} XML-RPC fault: {msg}")
             return json.dumps({"error": msg, "fault_code": e.faultCode})
+        except xmlrpc.client.ProtocolError as e:
+            logger.error(f"tool={func.__name__} protocol error: {e.errcode} {e.errmsg}")
+            return json.dumps({"error": f"Odoo HTTP error: {e.errcode} {e.errmsg}"})
         except (ConnectionRefusedError, OSError) as e:
+            logger.error(f"tool={func.__name__} connection error: {e}")
             return json.dumps({"error": f"Cannot reach Odoo server: {e}"})
         except json.JSONDecodeError as e:
+            logger.error(f"tool={func.__name__} JSON error: {e}")
             return json.dumps({"error": f"Invalid JSON input: {e}"})
         except ValueError as e:
+            logger.error(f"tool={func.__name__} value error: {e}")
             return json.dumps({"error": str(e)})
     wrapper.__name__ = func.__name__
     wrapper.__doc__ = func.__doc__
@@ -120,6 +132,23 @@ def _parse_values(val: Any) -> dict:
 # Odoo XML-RPC Client
 # ---------------------------------------------------------------------------
 
+def _make_timeout_transport(url: str, timeout: int = 30):
+    """Create an XML-RPC transport with a connection timeout."""
+    base_class = xmlrpc.client.SafeTransport if url.startswith("https") else xmlrpc.client.Transport
+
+    class TimeoutTransport(base_class):
+        def __init__(self, timeout_val, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.timeout = timeout_val
+
+        def make_connection(self, host):
+            conn = super().make_connection(host)
+            conn.timeout = self.timeout
+            return conn
+
+    return TimeoutTransport(timeout)
+
+
 class OdooClient:
     """Thin wrapper around Odoo's XML-RPC API."""
 
@@ -129,8 +158,9 @@ class OdooClient:
         self.username = username
         self.password = password
         self._uid = None
-        self._common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common")
-        self._object = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object")
+        transport = _make_timeout_transport(self.url, timeout=30)
+        self._common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common", transport=transport)
+        self._object = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object", transport=transport)
 
     @property
     def uid(self) -> int:
@@ -241,9 +271,9 @@ class OdooClient:
                 req = urllib.request.Request(report_url)
                 resp = opener.open(req, timeout=60)
                 data = resp.read()
-                # Check if we got HTML instead of PDF (session expired)
-                if len(data) < 100 or b"<title>" in data[:500]:
-                    raise ValueError("Got HTML instead of PDF — session expired")
+                # Check PDF magic bytes — if missing, probably HTML error page
+                if not data.startswith(b"%PDF-"):
+                    raise ValueError("Got non-PDF response — session may have expired")
                 return data
             except (ValueError, urllib.error.HTTPError):
                 if attempt == 0:
@@ -467,6 +497,7 @@ def odoo_crm_lead_summary(
         type_filter: 'lead' or 'opportunity' or '' for both
     """
     client = get_client()
+    limit = min(limit, 200)
     domain: list = []
     if stage_id:
         domain.append(("stage_id", "=", stage_id))
@@ -581,6 +612,12 @@ def odoo_delete(model: str, ids: Any = "[]") -> str:
         model: Model name
         ids: JSON array of record IDs to delete
     """
+    PROTECTED_MODELS = {
+        "ir.model", "ir.module.module", "ir.model.access",
+        "res.users", "res.company", "ir.rule", "ir.config_parameter",
+    }
+    if model in PROTECTED_MODELS:
+        return json.dumps({"error": f"Cannot delete records from protected model '{model}'"})
     client = get_client()
     parsed_ids = _parse_ids(ids)
     if not parsed_ids:
@@ -620,6 +657,10 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
     client = get_client()
     parsed_args = _parse_json(args)
     parsed_kwargs = _parse_json(kwargs)
+    if not isinstance(parsed_args, list):
+        return json.dumps({"error": "args must be a JSON list"})
+    if not isinstance(parsed_kwargs, dict):
+        return json.dumps({"error": "kwargs must be a JSON object"})
     result = client._object.execute_kw(
         client.db, client.uid, client.password,
         model, method, parsed_args, parsed_kwargs,
@@ -903,34 +944,31 @@ def odoo_dashboard_kpis() -> str:
     today = datetime.now()
     first_day = today.replace(day=1).strftime("%Y-%m-%d")
 
-    # Pipeline value
-    opps = client.search_read(
-        "crm.lead",
+    # Pipeline value (server-side aggregation via read_group)
+    pipeline_group = client.execute(
+        "crm.lead", "read_group",
         [("type", "=", "opportunity"), ("active", "=", True)],
-        fields=["expected_revenue"],
-        limit=500,
+        ["expected_revenue"], [],
     )
-    pipeline_value = sum(o.get("expected_revenue", 0) or 0 for o in opps)
+    pipeline_value = pipeline_group[0]["expected_revenue"] if pipeline_group else 0
 
-    # Monthly revenue
-    invs = client.search_read(
-        "account.move",
+    # Monthly revenue (server-side aggregation via read_group)
+    revenue_group = client.execute(
+        "account.move", "read_group",
         [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
          ("invoice_date", ">=", first_day)],
-        fields=["amount_total"],
-        limit=500,
+        ["amount_total"], [],
     )
-    monthly_revenue = sum(i.get("amount_total", 0) or 0 for i in invs)
+    monthly_revenue = revenue_group[0]["amount_total"] if revenue_group else 0
 
-    # Total debt
-    unpaid = client.search_read(
-        "account.move",
+    # Total debt (server-side aggregation via read_group)
+    debt_group = client.execute(
+        "account.move", "read_group",
         [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
          ("amount_residual", ">", 0)],
-        fields=["amount_residual"],
-        limit=500,
+        ["amount_residual"], [],
     )
-    total_debt = sum(i.get("amount_residual", 0) or 0 for i in unpaid)
+    total_debt = debt_group[0]["amount_residual"] if debt_group else 0
 
     # New leads this month
     new_leads = client.search_count(
@@ -951,26 +989,21 @@ def odoo_dashboard_kpis() -> str:
 def odoo_pipeline_by_stage() -> str:
     """Get CRM pipeline data grouped by stage: count and total value per stage."""
     client = get_client()
-    stages = client.search_read(
-        "crm.stage", [],
-        fields=["name", "sequence"],
-        order="sequence",
+    # Single read_group query instead of N+1 queries
+    groups = client.execute(
+        "crm.lead", "read_group",
+        [("active", "=", True), ("type", "=", "opportunity")],
+        ["expected_revenue", "stage_id"],
+        ["stage_id"],
     )
     result = []
-    for stage in stages:
-        leads = client.search_read(
-            "crm.lead",
-            [("stage_id", "=", stage["id"]), ("active", "=", True)],
-            fields=["expected_revenue"],
-            limit=500,
-        )
-        count = len(leads)
-        value = sum(l.get("expected_revenue", 0) or 0 for l in leads)
+    for g in groups:
+        stage_info = g.get("stage_id")
         result.append({
-            "stage_id": stage["id"],
-            "stage": stage["name"],
-            "count": count,
-            "value": value,
+            "stage_id": stage_info[0] if stage_info else None,
+            "stage": stage_info[1] if stage_info else "Unknown",
+            "count": g.get("stage_id_count", 0),
+            "value": g.get("expected_revenue", 0) or 0,
         })
     return json.dumps(result, indent=2, ensure_ascii=False)
 
