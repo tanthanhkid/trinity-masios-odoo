@@ -22,5 +22,8 @@ echo "Odoo MCP: ${ODOO_MCP_URL:-http://103.72.97.51:8200/sse}"
 echo "Model: alibaba-coding/glm-5"
 echo "==============================="
 
+# Export env vars for agent Bash commands (PDF sending via Telegram)
+export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
+
 # Run OpenClaw gateway
 exec openclaw gateway run --bind lan --port 18789 "$@"

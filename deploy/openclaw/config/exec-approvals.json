@@ -4,7 +4,10 @@
     "*": {
       "allowlist": [
         {"pattern": "mcporter"},
-        {"pattern": "mcporter call odoo.*"}
+        {"pattern": "mcporter call odoo.*"},
+        {"pattern": "base64 *"},
+        {"pattern": "curl *api.telegram.org*"},
+        {"pattern": "jq *"}
       ]
     }
   }

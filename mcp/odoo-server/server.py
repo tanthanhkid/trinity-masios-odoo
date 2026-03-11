@@ -10,12 +10,16 @@ Exposes Odoo's XML-RPC API as MCP tools for:
 Requires: pip install mcp (xmlrpc is stdlib)
 """
 
+import base64
 import hashlib
 import hmac
+import http.cookiejar
 import json
 import os
 import secrets
 import sys
+import urllib.error
+import urllib.request
 import xmlrpc.client
 from functools import lru_cache
 from pathlib import Path
@@ -192,6 +196,60 @@ class OdooClient:
 
     def server_version(self) -> dict:
         return self._common.version()
+
+    # --- HTTP session for report downloads ---
+
+    def _get_http_opener(self):
+        """Get an authenticated HTTP opener with session cookies."""
+        if hasattr(self, "_http_opener") and self._http_opener:
+            return self._http_opener
+
+        cj = http.cookiejar.CookieJar()
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(cj)
+        )
+
+        auth_url = f"{self.url}/web/session/authenticate"
+        payload = json.dumps({
+            "jsonrpc": "2.0", "method": "call", "id": 1,
+            "params": {
+                "db": self.db,
+                "login": self.username,
+                "password": self.password,
+            },
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            auth_url, data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        resp = opener.open(req, timeout=30)
+        result = json.loads(resp.read().decode("utf-8"))
+        if result.get("error"):
+            raise ConnectionError(f"HTTP auth failed: {result['error']}")
+
+        self._http_opener = opener
+        return opener
+
+    def download_report(self, report_name: str, record_ids: list[int]) -> bytes:
+        """Download a PDF report from Odoo's report engine via HTTP."""
+        for attempt in range(2):
+            try:
+                opener = self._get_http_opener()
+                ids_str = ",".join(str(i) for i in record_ids)
+                report_url = f"{self.url}/report/pdf/{report_name}/{ids_str}"
+                req = urllib.request.Request(report_url)
+                resp = opener.open(req, timeout=60)
+                data = resp.read()
+                # Check if we got HTML instead of PDF (session expired)
+                if len(data) < 100 or b"<title>" in data[:500]:
+                    raise ValueError("Got HTML instead of PDF — session expired")
+                return data
+            except (ValueError, urllib.error.HTTPError):
+                if attempt == 0:
+                    self._http_opener = None  # Force re-auth
+                    continue
+                raise
 
 
 # ---------------------------------------------------------------------------
@@ -915,6 +973,80 @@ def odoo_pipeline_by_stage() -> str:
             "value": value,
         })
     return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+# --- PDF Report Tools ---
+
+@mcp.tool()
+@_odoo_error
+def odoo_sale_order_pdf(order_id: int) -> str:
+    """Download a sale order / quotation as PDF (base64-encoded).
+
+    Args:
+        order_id: Sale order ID (sale.order record)
+    Returns:
+        JSON with filename, pdf_base64, size_bytes, and order metadata
+    """
+    client = get_client()
+    orders = client.search_read(
+        "sale.order", [("id", "=", order_id)],
+        fields=["name", "state", "partner_id", "amount_total"],
+        limit=1,
+    )
+    if not orders:
+        raise ValueError(f"Sale order {order_id} not found")
+
+    pdf_bytes = client.download_report("sale.report_saleorder", [order_id])
+    b64 = base64.b64encode(pdf_bytes).decode("ascii")
+
+    order = orders[0]
+    return json.dumps({
+        "order": order["name"],
+        "partner": order["partner_id"][1] if order["partner_id"] else None,
+        "state": order["state"],
+        "amount_total": order["amount_total"],
+        "filename": f"{order['name'].replace('/', '_')}.pdf",
+        "pdf_base64": b64,
+        "size_bytes": len(pdf_bytes),
+    }, ensure_ascii=False)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_invoice_pdf(invoice_id: int) -> str:
+    """Download an invoice as PDF (base64-encoded).
+
+    Args:
+        invoice_id: Invoice ID (account.move record)
+    Returns:
+        JSON with filename, pdf_base64, size_bytes, and invoice metadata
+    """
+    client = get_client()
+    invoices = client.search_read(
+        "account.move", [("id", "=", invoice_id)],
+        fields=["name", "state", "partner_id", "move_type", "amount_total"],
+        limit=1,
+    )
+    if not invoices:
+        raise ValueError(f"Invoice {invoice_id} not found")
+    if invoices[0]["move_type"] != "out_invoice":
+        raise ValueError(
+            f"Record {invoice_id} is type '{invoices[0]['move_type']}', not a customer invoice"
+        )
+
+    pdf_bytes = client.download_report("account.report_invoice", [invoice_id])
+    b64 = base64.b64encode(pdf_bytes).decode("ascii")
+
+    inv = invoices[0]
+    return json.dumps({
+        "invoice": inv["name"],
+        "partner": inv["partner_id"][1] if inv["partner_id"] else None,
+        "state": inv["state"],
+        "amount_total": inv["amount_total"],
+        "filename": f"{inv['name'].replace('/', '_')}.pdf",
+        "pdf_base64": b64,
+        "size_bytes": len(pdf_bytes),
+    }, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------

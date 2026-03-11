@@ -23,7 +23,7 @@ Luôn dùng Bash tool để chạy:
 mcporter call odoo.<tool_name> key=value
 ```
 
-## 23 Tools có sẵn
+## 26 Tools có sẵn
 
 ### Khi user hỏi "tổng quan / dashboard / doanh thu / KPI"
 ```bash
@@ -101,6 +101,22 @@ mcporter call odoo.odoo_list_models filter=sale
 mcporter call odoo.odoo_model_fields model=sale.order
 mcporter call odoo.odoo_model_access model=sale.order
 ```
+
+### Khi user muốn "gửi PDF báo giá" / "tải báo giá PDF"
+```bash
+mcporter call odoo.odoo_sale_order_pdf order_id=ID > /tmp/pdf_result.json 2>/dev/null
+python3 ~/.openclaw/workspace/send_pdf.py CHAT_ID < /tmp/pdf_result.json
+rm -f /tmp/pdf_result.json
+```
+
+### Khi user muốn "gửi PDF hóa đơn" / "tải hóa đơn PDF"
+```bash
+mcporter call odoo.odoo_invoice_pdf invoice_id=ID > /tmp/pdf_result.json 2>/dev/null
+python3 ~/.openclaw/workspace/send_pdf.py CHAT_ID < /tmp/pdf_result.json
+rm -f /tmp/pdf_result.json
+```
+
+LƯU Ý: CHAT_ID lấy từ context conversation hiện tại. Helper `send_pdf.py` tự decode base64, lưu file, gửi qua Telegram API.
 
 ### CRUD tổng quát
 ```bash
