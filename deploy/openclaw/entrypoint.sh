@@ -25,5 +25,9 @@ echo "==============================="
 # Export env vars for agent Bash commands (PDF sending via Telegram)
 export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
 
+# --- Auto-approve elevated commands (skip approval UI for Telegram) ---
+openclaw config set agents.defaults.elevatedDefault full 2>/dev/null || true
+openclaw config set tools.exec.security full 2>/dev/null || true
+
 # Run OpenClaw gateway
 exec openclaw gateway run --bind lan --port 18789 "$@"
