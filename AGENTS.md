@@ -255,7 +255,9 @@ cd deploy/openclaw
 docker-compose up -d
 ```
 
-### Exec Approvals
+### Exec Approvals & Tool Security
+
+#### LOCAL mode (Claude Code CLI)
 File `deploy/openclaw/config/exec-approvals.json` cho phép OpenClaw agent tự động approve các lệnh shell thường dùng. Patterns hiện tại:
 - `python3` — chạy helper scripts (send_pdf.py, etc.)
 - `rm` — xóa file tạm
@@ -263,6 +265,32 @@ File `deploy/openclaw/config/exec-approvals.json` cho phép OpenClaw agent tự 
 - `base64` — decode base64 payloads
 - `curl` — gọi API (Telegram Bot API, etc.)
 - `jq` — parse JSON responses
+
+**Lưu ý:** `exec-approvals.json` CHỈ hoạt động cho LOCAL (CLI) mode. Không có tác dụng với Telegram/Discord gateway.
+
+#### GATEWAY mode (Telegram/Discord)
+Để skip approval prompts trong gateway mode, cần 2 config:
+- `agents.defaults.elevatedDefault: "full"` — bỏ qua approval UI
+- `tools.exec.security: "full"` — cho phép tất cả commands không cần allowlist
+
+Các config này được set qua `openclaw config set` trong `entrypoint.sh` SAU KHI config JSON được generate (không thể đặt trong template JSON — bị validation strip):
+```bash
+openclaw config set agents.defaults.elevatedDefault full
+openclaw config set tools.exec.security full
+```
+
+Ngoài ra, user có thể dùng `/elevated full` command trong chat để bật per-session.
+
+#### Testing Telegram flow
+Để test đúng Telegram flow (bao gồm gateway approval), dùng `--channel telegram`:
+```bash
+openclaw agent --channel telegram --session-id test --message "your message"
+```
+**Không** dùng `openclaw agent --session-id test --message "..."` vì nó chạy LOCAL mode, bypass gateway approval logic.
+
+#### Tài liệu tham khảo
+- Exec approvals: https://docs.openclaw.ai/tools/exec-approvals.md
+- Elevated mode: https://docs.openclaw.ai/tools/elevated.md
 
 ### Docker File Permissions
 **Known issue:** Files copied vào container bằng `docker cp` sẽ thuộc root:root. Cần chown sau khi copy:

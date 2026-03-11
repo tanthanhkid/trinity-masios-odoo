@@ -28,7 +28,7 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - Real-time bridge to Odoo via XML-RPC (`.mcp.json` → `mcp/odoo-server/server.py`)
 - Credentials in `.env.local` (gitignored), template in `.env.example`
 - Server-side creds: `/etc/odoo-mcp/credentials` (chmod 600)
-- 24 tools: introspect models/fields/access/views, CRUD, CRM helpers, sales/invoicing, credit control, dashboard, execute (allowlisted)
+- 26 tools: introspect models/fields/access/views, CRUD, CRM helpers, sales/invoicing, credit control, dashboard, execute (allowlisted)
 - Use `odoo_model_fields` to get field types, constraints, relations for any model
 - Use `odoo_list_models` with filter to discover models (e.g. filter="crm")
 - Requires `uv` (Python package runner) — no global install needed
@@ -60,6 +60,12 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - Skill for agents: `deploy/mcp/openclaw-skill/SKILL.md`
 - mcporter with auth: `mcporter config add odoo http://server:8200/sse --header "Authorization=Bearer <token>" --scope home`
 
+#### Exec Approvals
+- `exec-approvals.json` only works for LOCAL/CLI mode — has no effect in Telegram gateway
+- For Telegram gateway: set `agents.defaults.elevatedDefault: "full"` + `tools.exec.security: "full"`
+- These keys are set via `openclaw config set` in `entrypoint.sh` (template validation strips them)
+- Test Telegram flow with: `openclaw agent --channel telegram --session-id X --message "..."`
+
 ### Docker Deployment (`deploy/openclaw/`)
 - Dockerized OpenClaw bots with template-based configuration
 - Config templates: `config/openclaw.template.json`, `config/mcporter.template.json`
@@ -82,7 +88,7 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
   - Bot 2: `~/openclaw-odoo-2/` (port 18790) — Telegram bot `@MASIBIO_bot`
 - **Telegram whitelist**: `2048339435` (CEO), `1481072032`
 
-## MCP Tools (24 total)
+## MCP Tools (26 total)
 ### Existing (13): server_info, list_models, model_fields, model_access, model_views, crm_stages, crm_lead_summary, search_read, count, create, write, delete, execute
 ### Added (11): sale_order_summary, create_sale_order, confirm_sale_order, invoice_summary, create_invoice_from_so, create_customer, customer_credit_status, customer_set_classification, customers_exceeding_credit, dashboard_kpis, pipeline_by_stage
 
