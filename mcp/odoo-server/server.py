@@ -550,6 +550,8 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         "message_post", "message_subscribe", "message_unsubscribe",
         "toggle_active", "name_search", "name_get",
         "default_get", "onchange", "read_group",
+        "action_confirm", "action_quotation_send",
+        "action_post", "_create_invoices",
     }
     if method not in ALLOWED_METHODS:
         return json.dumps({
@@ -565,6 +567,354 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         model, method, parsed_args, parsed_kwargs,
     )
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+
+
+# --- Sale Order Tools ---
+
+@mcp.tool()
+@_odoo_error
+def odoo_sale_order_summary(
+    partner_id: int = 0,
+    state: str = "",
+    limit: int = 20,
+) -> str:
+    """List sale orders with status and totals.
+
+    Args:
+        partner_id: Filter by customer ID (0 = all)
+        state: Filter by state: draft, sent, sale, done, cancel (empty = all)
+        limit: Max records (default 20)
+    """
+    client = get_client()
+    domain = []
+    if partner_id:
+        domain.append(("partner_id", "=", partner_id))
+    if state:
+        domain.append(("state", "=", state))
+    orders = client.search_read(
+        "sale.order", domain,
+        fields=["name", "partner_id", "date_order", "amount_total",
+                "state", "invoice_status", "user_id"],
+        limit=min(limit, 100),
+        order="date_order desc",
+    )
+    return json.dumps(orders, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_create_sale_order(partner_id: int, order_lines: Any = "[]") -> str:
+    """Create a quotation (draft sale order) with product lines.
+
+    Args:
+        partner_id: Customer ID (res.partner)
+        order_lines: JSON array of lines, each: {"product_id": int, "quantity": float, "price_unit": float (optional)}
+                     Example: [{"product_id": 1, "quantity": 5}, {"product_id": 2, "quantity": 3, "price_unit": 100}]
+    """
+    client = get_client()
+    lines = _parse_json(order_lines)
+    if not isinstance(lines, list) or not lines:
+        raise ValueError("order_lines must be a non-empty JSON array")
+
+    ol_commands = []
+    for line in lines:
+        if not isinstance(line, dict) or "product_id" not in line:
+            raise ValueError("Each line must have 'product_id'")
+        vals = {
+            "product_id": line["product_id"],
+            "product_uom_qty": line.get("quantity", 1),
+        }
+        if "price_unit" in line:
+            vals["price_unit"] = line["price_unit"]
+        ol_commands.append((0, 0, vals))
+
+    order_id = client.create("sale.order", {
+        "partner_id": partner_id,
+        "order_line": ol_commands,
+    })
+    # Read back to confirm
+    order = client.search_read(
+        "sale.order", [("id", "=", order_id)],
+        fields=["name", "partner_id", "amount_total", "state"],
+        limit=1,
+    )
+    return json.dumps({"created": order[0] if order else {"id": order_id}},
+                      indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_confirm_sale_order(order_id: int) -> str:
+    """Confirm a draft sale order (quotation -> sale order).
+    This triggers credit control checks if masios_credit_control is installed.
+
+    Args:
+        order_id: Sale order ID to confirm
+    """
+    client = get_client()
+    client._object.execute_kw(
+        client.db, client.uid, client.password,
+        "sale.order", "action_confirm", [[order_id]], {},
+    )
+    order = client.search_read(
+        "sale.order", [("id", "=", order_id)],
+        fields=["name", "state", "partner_id", "amount_total", "invoice_status"],
+        limit=1,
+    )
+    return json.dumps({"confirmed": order[0] if order else {"id": order_id}},
+                      indent=2, ensure_ascii=False, default=str)
+
+
+# --- Invoice Tools ---
+
+@mcp.tool()
+@_odoo_error
+def odoo_invoice_summary(
+    partner_id: int = 0,
+    state: str = "",
+    limit: int = 20,
+) -> str:
+    """List invoices with payment status.
+
+    Args:
+        partner_id: Filter by customer ID (0 = all)
+        state: Filter: draft, posted, cancel (empty = all)
+        limit: Max records (default 20)
+    """
+    client = get_client()
+    domain = [("move_type", "=", "out_invoice")]
+    if partner_id:
+        domain.append(("partner_id", "=", partner_id))
+    if state:
+        domain.append(("state", "=", state))
+    invoices = client.search_read(
+        "account.move", domain,
+        fields=["name", "partner_id", "invoice_date", "invoice_date_due",
+                "amount_total", "amount_residual", "state", "payment_state"],
+        limit=min(limit, 100),
+        order="invoice_date desc",
+    )
+    return json.dumps(invoices, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_create_invoice_from_so(order_id: int) -> str:
+    """Create an invoice from a confirmed sale order.
+
+    Args:
+        order_id: Sale order ID (must be in 'sale' state)
+    """
+    client = get_client()
+    # Check order state
+    order = client.search_read(
+        "sale.order", [("id", "=", order_id)],
+        fields=["name", "state", "invoice_status"],
+        limit=1,
+    )
+    if not order:
+        raise ValueError(f"Sale order {order_id} not found")
+    if order[0]["state"] != "sale":
+        raise ValueError(f"Order {order[0]['name']} is in state '{order[0]['state']}', must be 'sale'")
+
+    # Create invoice via _create_invoices method
+    invoice_ids = client._object.execute_kw(
+        client.db, client.uid, client.password,
+        "sale.order", "_create_invoices", [[order_id]], {},
+    )
+    if invoice_ids:
+        invoices = client.search_read(
+            "account.move", [("id", "in", invoice_ids)],
+            fields=["name", "partner_id", "amount_total", "state"],
+        )
+        return json.dumps({"invoices_created": invoices},
+                          indent=2, ensure_ascii=False, default=str)
+    return json.dumps({"error": "No invoices created"})
+
+
+# --- Customer Tools ---
+
+@mcp.tool()
+@_odoo_error
+def odoo_create_customer(
+    name: str,
+    phone: str = "",
+    email: str = "",
+    company_type: str = "company",
+    classification: str = "new",
+) -> str:
+    """Create a new customer (res.partner) with simple parameters — no JSON needed.
+
+    Args:
+        name: Customer name (required)
+        phone: Phone number
+        email: Email address
+        company_type: 'company' or 'person' (default 'company')
+        classification: 'new' or 'old' (default 'new')
+    """
+    client = get_client()
+    vals = {"name": name, "company_type": company_type, "customer_classification": classification}
+    if phone:
+        vals["phone"] = phone
+    if email:
+        vals["email"] = email
+    partner_id = client.create("res.partner", vals)
+    partner = client.search_read(
+        "res.partner", [("id", "=", partner_id)],
+        fields=["name", "phone", "email", "company_type", "customer_classification"],
+        limit=1,
+    )
+    return json.dumps({"created": partner[0] if partner else {"id": partner_id}},
+                      indent=2, ensure_ascii=False, default=str)
+
+
+# --- Credit Control Tools ---
+
+@mcp.tool()
+@_odoo_error
+def odoo_customer_credit_status(partner_id: int) -> str:
+    """Get customer credit status: classification, limit, debt, available credit.
+
+    Args:
+        partner_id: Customer (res.partner) ID
+    """
+    client = get_client()
+    partners = client.search_read(
+        "res.partner", [("id", "=", partner_id)],
+        fields=["name", "customer_classification", "credit_allowed",
+                "credit_limit", "outstanding_debt", "credit_available",
+                "credit_exceeded"],
+        limit=1,
+    )
+    if not partners:
+        raise ValueError(f"Partner {partner_id} not found")
+    return json.dumps(partners[0], indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_customer_set_classification(partner_id: int, classification: str) -> str:
+    """Set customer classification to 'new' or 'old'.
+
+    Args:
+        partner_id: Customer (res.partner) ID
+        classification: 'new' or 'old'
+    """
+    if classification not in ("new", "old"):
+        raise ValueError("classification must be 'new' or 'old'")
+    client = get_client()
+    client.write("res.partner", [partner_id], {"customer_classification": classification})
+    # Read back
+    partner = client.search_read(
+        "res.partner", [("id", "=", partner_id)],
+        fields=["name", "customer_classification", "credit_allowed", "credit_limit"],
+        limit=1,
+    )
+    return json.dumps({"updated": partner[0] if partner else {"id": partner_id}},
+                      indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_customers_exceeding_credit(limit: int = 50) -> str:
+    """List customers who have exceeded their credit limit.
+
+    Args:
+        limit: Max records (default 50)
+    """
+    client = get_client()
+    # Get all 'old' customers with credit limit
+    partners = client.search_read(
+        "res.partner",
+        [("customer_classification", "=", "old"), ("credit_limit", ">", 0)],
+        fields=["name", "credit_limit", "outstanding_debt", "credit_available", "credit_exceeded"],
+        limit=min(limit, 200),
+    )
+    exceeded = [p for p in partners if p.get("credit_exceeded")]
+    return json.dumps(exceeded, indent=2, ensure_ascii=False, default=str)
+
+
+# --- Dashboard Tools ---
+
+@mcp.tool()
+@_odoo_error
+def odoo_dashboard_kpis() -> str:
+    """Get CEO dashboard KPIs: pipeline value, monthly revenue, total debt, new leads count."""
+    from datetime import datetime
+    client = get_client()
+    today = datetime.now()
+    first_day = today.replace(day=1).strftime("%Y-%m-%d")
+
+    # Pipeline value
+    opps = client.search_read(
+        "crm.lead",
+        [("type", "=", "opportunity"), ("active", "=", True)],
+        fields=["expected_revenue"],
+        limit=500,
+    )
+    pipeline_value = sum(o.get("expected_revenue", 0) or 0 for o in opps)
+
+    # Monthly revenue
+    invs = client.search_read(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("invoice_date", ">=", first_day)],
+        fields=["amount_total"],
+        limit=500,
+    )
+    monthly_revenue = sum(i.get("amount_total", 0) or 0 for i in invs)
+
+    # Total debt
+    unpaid = client.search_read(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0)],
+        fields=["amount_residual"],
+        limit=500,
+    )
+    total_debt = sum(i.get("amount_residual", 0) or 0 for i in unpaid)
+
+    # New leads this month
+    new_leads = client.search_count(
+        "crm.lead", [("create_date", ">=", first_day)]
+    )
+
+    return json.dumps({
+        "pipeline_value": pipeline_value,
+        "monthly_revenue": monthly_revenue,
+        "total_debt": total_debt,
+        "new_leads": new_leads,
+        "period": first_day + " to " + today.strftime("%Y-%m-%d"),
+    }, indent=2)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_pipeline_by_stage() -> str:
+    """Get CRM pipeline data grouped by stage: count and total value per stage."""
+    client = get_client()
+    stages = client.search_read(
+        "crm.stage", [],
+        fields=["name", "sequence"],
+        order="sequence",
+    )
+    result = []
+    for stage in stages:
+        leads = client.search_read(
+            "crm.lead",
+            [("stage_id", "=", stage["id"]), ("active", "=", True)],
+            fields=["expected_revenue"],
+            limit=500,
+        )
+        count = len(leads)
+        value = sum(l.get("expected_revenue", 0) or 0 for l in leads)
+        result.append({
+            "stage_id": stage["id"],
+            "stage": stage["name"],
+            "count": count,
+            "value": value,
+        })
+    return json.dumps(result, indent=2, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------

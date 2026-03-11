@@ -1428,5 +1428,161 @@
       "readonly": true,
       "relation": "res.users"
     }
+  },
+  "sale.order": {
+    "name": {
+      "label": "Order Reference",
+      "type": "char",
+      "readonly": true
+    },
+    "partner_id": {
+      "label": "Customer",
+      "type": "many2one",
+      "relation": "res.partner",
+      "required": true
+    },
+    "date_order": {
+      "label": "Order Date",
+      "type": "datetime"
+    },
+    "amount_total": {
+      "label": "Total",
+      "type": "monetary",
+      "readonly": true,
+      "store": true
+    },
+    "state": {
+      "label": "Status",
+      "type": "selection",
+      "selection": [
+        ["draft", "Quotation"],
+        ["sent", "Quotation Sent"],
+        ["sale", "Sales Order"],
+        ["done", "Locked"],
+        ["cancel", "Cancelled"]
+      ]
+    },
+    "invoice_status": {
+      "label": "Invoice Status",
+      "type": "selection",
+      "selection": [
+        ["upselling", "Upselling Opportunity"],
+        ["invoiced", "Fully Invoiced"],
+        ["to invoice", "To Invoice"],
+        ["no", "Nothing to Invoice"]
+      ]
+    },
+    "order_line": {
+      "label": "Order Lines",
+      "type": "one2many",
+      "relation": "sale.order.line"
+    },
+    "user_id": {
+      "label": "Salesperson",
+      "type": "many2one",
+      "relation": "res.users"
+    },
+    "currency_id": {
+      "label": "Currency",
+      "type": "many2one",
+      "relation": "res.currency"
+    }
+  },
+  "account.move": {
+    "name": {
+      "label": "Number",
+      "type": "char",
+      "readonly": true
+    },
+    "partner_id": {
+      "label": "Partner",
+      "type": "many2one",
+      "relation": "res.partner"
+    },
+    "move_type": {
+      "label": "Type",
+      "type": "selection",
+      "selection": [
+        ["entry", "Journal Entry"],
+        ["out_invoice", "Customer Invoice"],
+        ["out_refund", "Customer Credit Note"],
+        ["in_invoice", "Vendor Bill"],
+        ["in_refund", "Vendor Credit Note"]
+      ]
+    },
+    "invoice_date": {
+      "label": "Invoice Date",
+      "type": "date"
+    },
+    "invoice_date_due": {
+      "label": "Due Date",
+      "type": "date"
+    },
+    "amount_total": {
+      "label": "Total",
+      "type": "monetary",
+      "readonly": true
+    },
+    "amount_residual": {
+      "label": "Amount Due",
+      "type": "monetary",
+      "readonly": true
+    },
+    "state": {
+      "label": "Status",
+      "type": "selection",
+      "selection": [
+        ["draft", "Draft"],
+        ["posted", "Posted"],
+        ["cancel", "Cancelled"]
+      ]
+    },
+    "payment_state": {
+      "label": "Payment Status",
+      "type": "selection",
+      "selection": [
+        ["not_paid", "Not Paid"],
+        ["in_payment", "In Payment"],
+        ["paid", "Paid"],
+        ["partial", "Partially Paid"],
+        ["reversed", "Reversed"],
+        ["invoicing_legacy", "Invoicing App Legacy"]
+      ]
+    }
+  },
+  "res.partner._credit_control": {
+    "customer_classification": {
+      "label": "Phân loại KH",
+      "type": "selection",
+      "selection": [
+        ["new", "Khách hàng mới"],
+        ["old", "Khách hàng cũ"]
+      ]
+    },
+    "credit_allowed": {
+      "label": "Cho phép công nợ",
+      "type": "boolean",
+      "readonly": true,
+      "store": true
+    },
+    "credit_limit": {
+      "label": "Hạn mức công nợ",
+      "type": "monetary"
+    },
+    "outstanding_debt": {
+      "label": "Công nợ hiện tại",
+      "type": "monetary",
+      "readonly": true
+    },
+    "credit_available": {
+      "label": "Hạn mức còn lại",
+      "type": "monetary",
+      "readonly": true
+    },
+    "credit_exceeded": {
+      "label": "Vượt hạn mức",
+      "type": "boolean",
+      "readonly": true
+    }
   }
 }

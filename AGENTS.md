@@ -50,6 +50,61 @@ mcporter call odoo.odoo_search_read model=crm.lead fields=name,partner_id
 ### Pipeline Stages
 1. **New** (id=1) → 2. **Qualified** (id=2) → 3. **Proposition** (id=3) → 4. **Won** (id=4, is_won=true)
 
+### Sale & Invoice Models
+- `sale.order` — Sale orders/quotations. Key fields: `name`, `partner_id`, `date_order`, `amount_total`, `state` (draft/sent/sale/done/cancel), `invoice_status`, `order_line`
+- `sale.order.line` — Order lines. Key fields: `product_id`, `product_uom_qty`, `price_unit`, `price_subtotal`
+- `account.move` — Invoices/bills. Key fields: `name`, `partner_id`, `move_type` (out_invoice), `invoice_date`, `invoice_date_due`, `amount_total`, `amount_residual`, `state` (draft/posted/cancel), `payment_state`
+
+### Credit Control Fields (res.partner)
+Custom fields added by `masios_credit_control` module:
+- `customer_classification`: Selection (new/old) — mặc định 'new'
+- `credit_allowed`: Boolean computed — True khi classification = 'old'
+- `credit_limit`: Monetary — hạn mức công nợ
+- `outstanding_debt`: Monetary computed — tổng amount_residual hóa đơn chưa thanh toán
+- `credit_available`: Monetary computed — credit_limit - outstanding_debt
+- `credit_exceeded`: Boolean computed — True khi vượt hạn mức
+
+## Available MCP Tools (23)
+
+### Discovery & Introspection (6)
+- `odoo_server_info` — Server version and connection info
+- `odoo_list_models` — List models matching a name filter
+- `odoo_model_fields` — All fields with types, required, relations, selections
+- `odoo_model_access` — CRUD permissions per security group
+- `odoo_model_views` — Form/list/kanban view XML definitions
+- `odoo_crm_stages` — Pipeline stages
+
+### CRM (1)
+- `odoo_crm_lead_summary` — All leads/opportunities with optional filters
+
+### Generic CRUD (5)
+- `odoo_search_read` — Query with specific fields and domain filters
+- `odoo_count` — Count records with optional domain
+- `odoo_create` — Create records on any model
+- `odoo_write` — Update records
+- `odoo_delete` — Delete records
+
+### Advanced (1)
+- `odoo_execute` — Call any allowlisted Odoo method
+
+### Sale Orders (3)
+- `odoo_sale_order_summary` — List sale orders with optional partner/state filter
+- `odoo_create_sale_order` — Create quotation with order lines
+- `odoo_confirm_sale_order` — Confirm a sale order (triggers credit check)
+
+### Invoices (2)
+- `odoo_invoice_summary` — List invoices with optional partner/state filter
+- `odoo_create_invoice_from_so` — Create invoice from confirmed sale order
+
+### Credit Control (3)
+- `odoo_customer_credit_status` — Credit info for a customer
+- `odoo_customer_set_classification` — Set customer classification (new/old)
+- `odoo_customers_exceeding_credit` — List customers exceeding credit limit
+
+### Dashboard (2)
+- `odoo_dashboard_kpis` — CEO KPIs (revenue, pipeline, invoices, credit)
+- `odoo_pipeline_by_stage` — Pipeline data grouped by stage
+
 ## Common Workflows
 
 ### Look up what fields a model has
@@ -77,6 +132,22 @@ odoo_search_read(model="crm.lead", domain='[["stage_id","=",1]]', fields="name,e
 ```
 odoo_write(model="crm.lead", ids="[2]", values='{"stage_id":4}')  # Move to Won
 ```
+
+### Sales Workflow
+1. Tạo báo giá: `odoo_create_sale_order(partner_id, order_lines)`
+2. Xác nhận: `odoo_confirm_sale_order(order_id)` — triggers credit check
+3. Tạo hóa đơn: `odoo_create_invoice_from_so(order_id)`
+4. Xem trạng thái: `odoo_sale_order_summary()`, `odoo_invoice_summary()`
+
+### Credit Control Workflow
+1. Xem credit status: `odoo_customer_credit_status(partner_id)`
+2. Đổi phân loại: `odoo_customer_set_classification(partner_id, 'old')`
+3. DS vượt hạn mức: `odoo_customers_exceeding_credit()`
+
+### CEO Dashboard
+- KPI tổng hợp: `odoo_dashboard_kpis()`
+- Pipeline theo stage: `odoo_pipeline_by_stage()`
+- Truy cập web: `/dashboard` (đăng nhập Odoo)
 
 ## Authentication
 

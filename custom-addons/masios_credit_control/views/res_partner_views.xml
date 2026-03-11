@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_form_credit" model="ir.ui.view">
+        <field name="name">res.partner.form.credit</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='internal_notes']" position="before">
+                <page string="Công nợ" name="credit_control">
+                    <group>
+                        <group string="Phân loại">
+                            <field name="customer_classification" widget="radio"/>
+                        </group>
+                        <group string="Hạn mức công nợ">
+                            <field name="credit_allowed" readonly="1"/>
+                            <field name="credit_limit" invisible="customer_classification != 'old'"/>
+                            <field name="outstanding_debt"/>
+                            <field name="credit_available" invisible="customer_classification != 'old'"/>
+                            <field name="credit_exceeded" invisible="customer_classification != 'old'"
+                                   decoration-danger="credit_exceeded"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- List view: add classification column -->
+    <record id="view_partner_tree_credit" model="ir.ui.view">
+        <field name="name">res.partner.tree.credit</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='email']" position="after">
+                <field name="customer_classification" optional="show"/>
+                <field name="outstanding_debt" optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

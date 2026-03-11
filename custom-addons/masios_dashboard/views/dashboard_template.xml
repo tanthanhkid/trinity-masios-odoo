@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="dashboard_page" name="CEO Dashboard">
+        <t t-call="website.layout">
+            <div id="ceo-dashboard" class="container-fluid py-4">
+                <h1 class="mb-4">Dashboard Tổng hợp</h1>
+
+                <!-- KPI Cards -->
+                <div class="row mb-4" id="kpi-cards">
+                    <div class="col-md-3">
+                        <div class="card text-white bg-primary">
+                            <div class="card-body">
+                                <h6 class="card-title">Pipeline</h6>
+                                <h3 id="kpi-pipeline" class="card-text">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-white bg-success">
+                            <div class="card-body">
+                                <h6 class="card-title">Doanh thu tháng</h6>
+                                <h3 id="kpi-revenue" class="card-text">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-white bg-warning">
+                            <div class="card-body">
+                                <h6 class="card-title">Tổng công nợ</h6>
+                                <h3 id="kpi-debt" class="card-text">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-white bg-info">
+                            <div class="card-body">
+                                <h6 class="card-title">Leads mới</h6>
+                                <h3 id="kpi-leads" class="card-text">-</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Chart -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header"><strong>CRM Pipeline</strong></div>
+                            <div class="card-body">
+                                <canvas id="pipeline-chart" height="250"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header"><strong>Cảnh báo Công nợ</strong></div>
+                            <div class="card-body">
+                                <table class="table table-sm" id="credit-alerts-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Khách hàng</th>
+                                            <th>Hạn mức</th>
+                                            <th>Công nợ</th>
+                                            <th>Vượt</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                                <p id="no-alerts" class="text-success" style="display:none;">Không có cảnh báo</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Orders -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header"><strong>Đơn hàng gần đây</strong></div>
+                            <div class="card-body table-responsive">
+                                <table class="table table-sm table-hover" id="orders-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Mã</th>
+                                            <th>Khách hàng</th>
+                                            <th>Ngày</th>
+                                            <th>Tổng tiền</th>
+                                            <th>Trạng thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header"><strong>Hóa đơn &amp; Thanh toán</strong></div>
+                            <div class="card-body table-responsive">
+                                <table class="table table-sm table-hover" id="invoices-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Mã</th>
+                                            <th>Khách hàng</th>
+                                            <th>Tổng</th>
+                                            <th>Còn nợ</th>
+                                            <th>Trạng thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart.js CDN -->
+            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+        </t>
+    </template>
+</odoo>

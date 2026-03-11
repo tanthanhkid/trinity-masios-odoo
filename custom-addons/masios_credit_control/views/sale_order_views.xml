@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_sale_order_form_credit_info" model="ir.ui.view">
+        <field name="name">sale.order.form.credit.info</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="partner_credit_exceeded" invisible="1"/>
+                <field name="partner_classification" invisible="1"/>
+                <div class="alert alert-warning mb-0" role="alert"
+                     invisible="not partner_credit_exceeded">
+                    <i class="fa fa-exclamation-triangle"/> Khách hàng đã vượt hạn mức công nợ!
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>
