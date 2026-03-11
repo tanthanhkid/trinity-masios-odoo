@@ -6,7 +6,7 @@ Self-hosted Odoo 18.0 CRM on Ubuntu, fully managed by AI agents via MCP.
 
 An Odoo deployment with an AI-powered management layer:
 - **Odoo 18.0 Community** running on Ubuntu 24.04 (103.72.97.51)
-- **MCP Server** (13 tools) — real-time Odoo introspection and CRUD via XML-RPC
+- **MCP Server** (26 tools) — real-time Odoo introspection, CRUD, sales, invoicing, credit control via XML-RPC
 - **Claude Code skills** — SSH DevOps, Odoo self-hosting, smart error memory
 - **OpenClaw integration** — any OpenClaw agent can manage Odoo via mcporter
 
@@ -45,12 +45,16 @@ cp deploy/mcp/openclaw-skill ~/.openclaw/skills/odoo-crm
 
 See [openclaw_setup.md](openclaw_setup.md) for detailed guide.
 
-## MCP Tools (13)
+## MCP Tools (26)
 
 | Category | Tools |
 |----------|-------|
 | **Discover** | `odoo_server_info`, `odoo_list_models`, `odoo_model_fields`, `odoo_model_access`, `odoo_model_views` |
-| **CRM** | `odoo_crm_stages`, `odoo_crm_lead_summary` |
+| **CRM** | `odoo_crm_stages`, `odoo_crm_lead_summary`, `odoo_pipeline_by_stage` |
+| **Sales** | `odoo_sale_order_summary`, `odoo_create_sale_order`, `odoo_confirm_sale_order`, `odoo_sale_order_pdf` |
+| **Invoicing** | `odoo_invoice_summary`, `odoo_create_invoice_from_so`, `odoo_invoice_pdf` |
+| **Customers** | `odoo_create_customer`, `odoo_customer_credit_status`, `odoo_customer_set_classification`, `odoo_customers_exceeding_credit` |
+| **Dashboard** | `odoo_dashboard_kpis` |
 | **CRUD** | `odoo_search_read`, `odoo_count`, `odoo_create`, `odoo_write`, `odoo_delete` |
 | **Advanced** | `odoo_execute` (allowlisted methods only) |
 

@@ -23,7 +23,7 @@ Luôn dùng Bash tool để chạy:
 mcporter call odoo.<tool_name> key=value
 ```
 
-## 24 Tools có sẵn
+## 26 Tools có sẵn
 
 ### Khi user hỏi "tổng quan / dashboard / doanh thu / KPI"
 ```bash
@@ -102,6 +102,26 @@ mcporter call odoo.odoo_model_fields model=sale.order
 mcporter call odoo.odoo_model_access model=sale.order
 mcporter call odoo.odoo_model_views model=sale.order
 ```
+
+### Khi user muốn "gửi PDF báo giá" / "tải báo giá PDF"
+```bash
+mcporter call odoo.odoo_sale_order_pdf order_id=ID > /tmp/pdf_result.json 2>/dev/null
+python3 /home/openclaw/.openclaw/workspace/send_pdf.py CHAT_ID < /tmp/pdf_result.json
+rm -f /tmp/pdf_result.json
+```
+
+### Khi user muốn "gửi PDF hóa đơn" / "tải hóa đơn PDF"
+```bash
+mcporter call odoo.odoo_invoice_pdf invoice_id=ID > /tmp/pdf_result.json 2>/dev/null
+python3 /home/openclaw/.openclaw/workspace/send_pdf.py CHAT_ID < /tmp/pdf_result.json
+rm -f /tmp/pdf_result.json
+```
+
+LƯU Ý QUAN TRỌNG:
+- CHAT_ID: Khi user chat qua Telegram, CHAT_ID chính là ID của cuộc hội thoại hiện tại. Bạn có thể tìm trong session name (vd: `telegram:direct:2048339435` → CHAT_ID = `2048339435`). Nếu không biết, hỏi user.
+- Helper `send_pdf.py` nằm tại `~/.openclaw/workspace/send_pdf.py`, tự decode base64, lưu file, gửi qua Telegram Bot API.
+- TELEGRAM_BOT_TOKEN đã được export sẵn trong env.
+- Dùng đường dẫn TUYỆT ĐỐI: `python3 /home/openclaw/.openclaw/workspace/send_pdf.py`
 
 ### Thực thi method tùy chỉnh (advanced)
 ```bash

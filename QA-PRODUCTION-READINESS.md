@@ -11,6 +11,17 @@
 
 **The system is NOT production-ready.** It is a solid Phase 4 prototype (POC → MVP) with working Telegram-to-Odoo bridge and good CRM/Sales/Credit foundations. There are **12 CRITICAL** and **16 HIGH** priority issues across 5 audit areas that must be resolved before real business use.
 
+## FIX STATUS (Updated 2026-03-11)
+
+Phase 5A local fixes have been applied and deployed. The following items from this report are now RESOLVED:
+- MCP server: read_group aggregation, ProtocolError, timeout, logging, delete blocklist, PDF magic bytes, limit caps
+- OpenClaw: Telegram allowlist (dmPolicy=allowlist), exec-approvals tightened, send_pdf error handling, delete confirmation
+- Custom module: Security access rules added
+- Company: Name, country, address updated
+- Backup: Daily cron installed
+
+Items still OPEN: Currency USD→VND, test data purge, admin password, user accounts, e-invoice
+
 ---
 
 ## TABLE OF CONTENTS

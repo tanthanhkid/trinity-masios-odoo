@@ -644,7 +644,7 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         "action_archive", "action_unarchive",
         "message_post", "message_subscribe", "message_unsubscribe",
         "toggle_active", "name_search", "name_get",
-        "default_get", "onchange", "read_group",
+        "default_get", "onchange", "read_group", "search_count",
         "action_confirm", "action_quotation_send",
         "action_post", "_create_invoices",
     }
@@ -751,6 +751,16 @@ def odoo_confirm_sale_order(order_id: int) -> str:
         order_id: Sale order ID to confirm
     """
     client = get_client()
+    # Pre-check: order must exist and be in draft state
+    order = client.search_read(
+        "sale.order", [("id", "=", order_id)],
+        fields=["state", "name"],
+        limit=1,
+    )
+    if not order:
+        return json.dumps({"error": f"Sale order {order_id} not found"})
+    if order[0]["state"] != "draft":
+        return json.dumps({"error": f"Order {order[0]['name']} is already in state '{order[0]['state']}', cannot confirm"})
     client._object.execute_kw(
         client.db, client.uid, client.password,
         "sale.order", "action_confirm", [[order_id]], {},
@@ -841,6 +851,7 @@ def odoo_create_customer(
     email: str = "",
     company_type: str = "company",
     classification: str = "new",
+    credit_limit: float = 0,
 ) -> str:
     """Create a new customer (res.partner) with simple parameters — no JSON needed.
 
@@ -850,6 +861,7 @@ def odoo_create_customer(
         email: Email address
         company_type: 'company' or 'person' (default 'company')
         classification: 'new' or 'old' (default 'new')
+        credit_limit: Credit limit amount (default 0, only applied if > 0)
     """
     client = get_client()
     vals = {"name": name, "company_type": company_type, "customer_classification": classification}
@@ -857,6 +869,8 @@ def odoo_create_customer(
         vals["phone"] = phone
     if email:
         vals["email"] = email
+    if credit_limit > 0:
+        vals["credit_limit"] = credit_limit
     partner_id = client.create("res.partner", vals)
     partner = client.search_read(
         "res.partner", [("id", "=", partner_id)],
@@ -1002,7 +1016,7 @@ def odoo_pipeline_by_stage() -> str:
         result.append({
             "stage_id": stage_info[0] if stage_info else None,
             "stage": stage_info[1] if stage_info else "Unknown",
-            "count": g.get("stage_id_count", 0),
+            "count": g.get("__count", g.get("stage_id_count", 0)),
             "value": g.get("expected_revenue", 0) or 0,
         })
     return json.dumps(result, indent=2, ensure_ascii=False)
@@ -1061,7 +1075,9 @@ def odoo_invoice_pdf(invoice_id: int) -> str:
         limit=1,
     )
     if not invoices:
-        raise ValueError(f"Invoice {invoice_id} not found")
+        return json.dumps({"error": f"Invoice {invoice_id} not found"})
+    if invoices[0]["state"] == "draft":
+        return json.dumps({"error": f"Invoice {invoices[0]['name']} is in draft state. Post it first before downloading PDF."})
     if invoices[0]["move_type"] != "out_invoice":
         raise ValueError(
             f"Record {invoice_id} is type '{invoices[0]['move_type']}', not a customer invoice"
@@ -1103,7 +1119,7 @@ def _create_authed_app(app, api_token: str):
             self.token = token
 
         async def __call__(self, scope: Scope, receive: Receive, send: Send):
-            if scope["type"] == "http":
+            if scope["type"] in ("http", "websocket"):
                 request = Request(scope)
                 auth_header = request.headers.get("authorization", "")
                 if not auth_header.startswith("Bearer "):

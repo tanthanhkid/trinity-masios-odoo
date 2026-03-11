@@ -80,7 +80,7 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 ## Mac Deploy Machine (OpenClaw Docker Host)
 - **IP**: 100.81.203.48 (Tailscale)
 - **User**: masios
-- **Password**: 19112003
+- **Password**: (stored in memory/server-config.md)
 - **OS**: macOS 26.3, Apple Silicon (ARM64), Mac Studio
 - **Docker**: OrbStack v2.0.5, Docker 29.2.0
 - **Deploy paths**:
@@ -90,7 +90,7 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 
 ## MCP Tools (26 total)
 ### Existing (13): server_info, list_models, model_fields, model_access, model_views, crm_stages, crm_lead_summary, search_read, count, create, write, delete, execute
-### Added (11): sale_order_summary, create_sale_order, confirm_sale_order, invoice_summary, create_invoice_from_so, create_customer, customer_credit_status, customer_set_classification, customers_exceeding_credit, dashboard_kpis, pipeline_by_stage
+### Added (13): sale_order_summary, create_sale_order, confirm_sale_order, invoice_summary, create_invoice_from_so, create_customer, customer_credit_status, customer_set_classification, customers_exceeding_credit, dashboard_kpis, pipeline_by_stage, invoice_pdf, sale_order_pdf
 
 ## Custom Modules Deployed
 - `masios_credit_control` — Customer classification (new/old), credit limits, debt tracking
@@ -165,7 +165,7 @@ so these must be set via CLI after config generation.
 
 ## Conventions
 - Use `sshpass` for SSH connections to Odoo server
-- Use `ssh masios@100.81.203.48` for Mac deploy machine (password: 19112003)
+- Use `ssh masios@100.81.203.48` for Mac deploy machine (password in memory)
 - Always backup before destructive operations
 - Log errors and fixes to Smart Memory SQLite
 - Custom modules go in `/opt/odoo/custom-addons/`

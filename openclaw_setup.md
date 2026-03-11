@@ -26,7 +26,7 @@ Verify:
 mcporter list odoo --schema
 ```
 
-You should see 13 tools (odoo_server_info, odoo_list_models, odoo_model_fields, etc.)
+You should see 26 tools (odoo_server_info, odoo_list_models, odoo_model_fields, etc.)
 
 Test:
 ```bash
@@ -50,7 +50,7 @@ openclaw skills list | grep odoo
 ## That's it!
 
 Your OpenClaw agents now have:
-- **13 real-time tools** to interact with Odoo
+- **26 real-time tools** to interact with Odoo
 - **Skill documentation** teaching them CRM models, fields, domain syntax, and workflows
 
 ## Quick Test
