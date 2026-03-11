@@ -30,6 +30,7 @@ class SaleOrder(models.Model):
                         "Khách hàng mới không được phép công nợ. "
                         "Vui lòng thanh toán hóa đơn trước khi xác nhận đơn hàng mới."
                     ))
+            # credit_limit = 0 means unlimited credit for old customers
             elif partner.customer_classification == 'old' and partner.credit_limit > 0:
                 # KH cũ: kiểm tra hạn mức công nợ
                 new_total = partner.outstanding_debt + order.amount_total

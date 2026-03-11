@@ -9,10 +9,14 @@ class DashboardController(http.Controller):
 
     @http.route('/dashboard', type='http', auth='user', website=True)
     def dashboard_page(self, **kwargs):
+        if not request.env.user.has_group('sales_team.group_sale_manager'):
+            return request.redirect('/web')
         return request.render('masios_dashboard.dashboard_page')
 
     @http.route('/dashboard/data', type='http', auth='user', methods=['GET'], csrf=False)
     def dashboard_data(self, **kwargs):
+        if not request.env.user.has_group('sales_team.group_sale_manager'):
+            return request.make_json_response({'error': 'Access denied'}, status=403)
         data = {
             'kpis': self._get_kpis(),
             'pipeline': self._get_pipeline(),
@@ -62,19 +66,17 @@ class DashboardController(http.Controller):
         }
 
     def _get_pipeline(self):
-        stages = request.env['crm.stage'].search([], order='sequence')
-        result = []
-        for stage in stages:
-            leads = request.env['crm.lead'].search([
-                ('stage_id', '=', stage.id),
-                ('active', '=', True),
-            ])
-            result.append({
-                'stage': stage.name,
-                'count': len(leads),
-                'value': sum(leads.mapped('expected_revenue')),
-            })
-        return result
+        Lead = request.env['crm.lead']
+        data = Lead.read_group(
+            [('type', '=', 'opportunity'), ('active', '=', True)],
+            ['expected_revenue'],
+            ['stage_id']
+        )
+        return [{
+            'stage': item['stage_id'][1] if item['stage_id'] else 'Unknown',
+            'count': item['stage_id_count'],
+            'value': item['expected_revenue'] or 0,
+        } for item in data]
 
     def _get_recent_orders(self):
         orders = request.env['sale.order'].search(
@@ -117,18 +119,11 @@ class DashboardController(http.Controller):
         return result
 
     def _get_credit_alerts(self):
-        partners = request.env['res.partner'].search([
-            ('customer_classification', '=', 'old'),
-            ('credit_limit', '>', 0),
-        ])
-        alerts = []
-        for p in partners:
-            if p.credit_exceeded:
-                alerts.append({
-                    'id': p.id,
-                    'name': p.name,
-                    'credit_limit': p.credit_limit,
-                    'outstanding_debt': p.outstanding_debt,
-                    'exceeded_by': p.outstanding_debt - p.credit_limit,
-                })
-        return alerts
+        Partner = request.env['res.partner']
+        # Get old customers with credit limits
+        partners = Partner.search_read(
+            [('customer_classification', '=', 'old'), ('credit_limit', '>', 0)],
+            ['name', 'credit_limit', 'outstanding_debt', 'credit_exceeded'],
+            limit=20
+        )
+        return [p for p in partners if p.get('credit_exceeded')]

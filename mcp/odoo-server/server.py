@@ -19,6 +19,7 @@ import logging
 import os
 import secrets
 import sys
+import threading
 import urllib.error
 import urllib.request
 import xmlrpc.client
@@ -158,6 +159,7 @@ class OdooClient:
         self.username = username
         self.password = password
         self._uid = None
+        self._lock = threading.Lock()
         transport = _make_timeout_transport(self.url, timeout=30)
         self._common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common", transport=transport)
         self._object = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object", transport=transport)
@@ -165,27 +167,32 @@ class OdooClient:
     @property
     def uid(self) -> int:
         if self._uid is None:
-            self._uid = self._common.authenticate(
-                self.db, self.username, self.password, {}
-            )
-            if not self._uid:
-                raise ConnectionError(
-                    f"Authentication failed for {self.username}@{self.db}"
-                )
+            with self._lock:
+                # Double-check after acquiring lock
+                if self._uid is None:
+                    self._uid = self._common.authenticate(
+                        self.db, self.username, self.password, {}
+                    )
+                    if not self._uid:
+                        raise ConnectionError(
+                            f"Authentication failed for {self.username}@{self.db}"
+                        )
         return self._uid
 
     def execute(self, model: str, method: str, *args, **kwargs) -> Any:
-        return self._object.execute_kw(
-            self.db, self.uid, self.password, model, method, list(args), kwargs
-        )
+        with self._lock:
+            return self._object.execute_kw(
+                self.db, self.uid, self.password, model, method, list(args), kwargs
+            )
 
     @lru_cache(maxsize=64)
     def fields_get_cached(self, model: str, attrs_tuple: tuple) -> dict:
         """Cached version of fields_get (attrs as tuple for hashability)."""
-        return self._object.execute_kw(
-            self.db, self.uid, self.password, model, "fields_get",
-            [], {"attributes": list(attrs_tuple)},
-        )
+        with self._lock:
+            return self._object.execute_kw(
+                self.db, self.uid, self.password, model, "fields_get",
+                [], {"attributes": list(attrs_tuple)},
+            )
 
     def fields_get(
         self, model: str,
@@ -214,9 +221,10 @@ class OdooClient:
 
     def create(self, model: str, values: dict) -> int:
         # execute_kw args: [values_dict] — Odoo create accepts dict or list-of-dicts
-        return self._object.execute_kw(
-            self.db, self.uid, self.password, model, "create", [values], {},
-        )
+        with self._lock:
+            return self._object.execute_kw(
+                self.db, self.uid, self.password, model, "create", [values], {},
+            )
 
     def write(self, model: str, ids: list[int], values: dict) -> bool:
         return self.execute(model, "write", ids, values)
@@ -225,7 +233,8 @@ class OdooClient:
         return self.execute(model, "unlink", ids)
 
     def server_version(self) -> dict:
-        return self._common.version()
+        with self._lock:
+            return self._common.version()
 
     # --- HTTP session for report downloads ---
 
@@ -661,10 +670,11 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         return json.dumps({"error": "args must be a JSON list"})
     if not isinstance(parsed_kwargs, dict):
         return json.dumps({"error": "kwargs must be a JSON object"})
-    result = client._object.execute_kw(
-        client.db, client.uid, client.password,
-        model, method, parsed_args, parsed_kwargs,
-    )
+    with client._lock:
+        result = client._object.execute_kw(
+            client.db, client.uid, client.password,
+            model, method, parsed_args, parsed_kwargs,
+        )
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
@@ -759,12 +769,13 @@ def odoo_confirm_sale_order(order_id: int) -> str:
     )
     if not order:
         return json.dumps({"error": f"Sale order {order_id} not found"})
-    if order[0]["state"] != "draft":
-        return json.dumps({"error": f"Order {order[0]['name']} is already in state '{order[0]['state']}', cannot confirm"})
-    client._object.execute_kw(
-        client.db, client.uid, client.password,
-        "sale.order", "action_confirm", [[order_id]], {},
-    )
+    if order[0]["state"] not in ("draft", "sent"):
+        return json.dumps({"error": f"Order {order[0]['name']} is in state '{order[0]['state']}', must be in draft or sent state"})
+    with client._lock:
+        client._object.execute_kw(
+            client.db, client.uid, client.password,
+            "sale.order", "action_confirm", [[order_id]], {},
+        )
     order = client.search_read(
         "sale.order", [("id", "=", order_id)],
         fields=["name", "state", "partner_id", "amount_total", "invoice_status"],
@@ -827,10 +838,11 @@ def odoo_create_invoice_from_so(order_id: int) -> str:
         raise ValueError(f"Order {order[0]['name']} is in state '{order[0]['state']}', must be 'sale'")
 
     # Create invoice via _create_invoices method
-    invoice_ids = client._object.execute_kw(
-        client.db, client.uid, client.password,
-        "sale.order", "_create_invoices", [[order_id]], {},
-    )
+    with client._lock:
+        invoice_ids = client._object.execute_kw(
+            client.db, client.uid, client.password,
+            "sale.order", "_create_invoices", [[order_id]], {},
+        )
     if invoice_ids:
         invoices = client.search_read(
             "account.move", [("id", "in", invoice_ids)],
@@ -964,7 +976,7 @@ def odoo_dashboard_kpis() -> str:
         [("type", "=", "opportunity"), ("active", "=", True)],
         ["expected_revenue"], [],
     )
-    pipeline_value = pipeline_group[0]["expected_revenue"] if pipeline_group else 0
+    pipeline_value = (pipeline_group[0]["expected_revenue"] or 0) if pipeline_group else 0
 
     # Monthly revenue (server-side aggregation via read_group)
     revenue_group = client.execute(
@@ -973,7 +985,7 @@ def odoo_dashboard_kpis() -> str:
          ("invoice_date", ">=", first_day)],
         ["amount_total"], [],
     )
-    monthly_revenue = revenue_group[0]["amount_total"] if revenue_group else 0
+    monthly_revenue = (revenue_group[0]["amount_total"] or 0) if revenue_group else 0
 
     # Total debt (server-side aggregation via read_group)
     debt_group = client.execute(
@@ -982,7 +994,7 @@ def odoo_dashboard_kpis() -> str:
          ("amount_residual", ">", 0)],
         ["amount_residual"], [],
     )
-    total_debt = debt_group[0]["amount_residual"] if debt_group else 0
+    total_debt = (debt_group[0]["amount_residual"] or 0) if debt_group else 0
 
     # New leads this month
     new_leads = client.search_count(

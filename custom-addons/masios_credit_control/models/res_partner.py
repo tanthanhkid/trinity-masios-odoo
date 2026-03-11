@@ -39,16 +39,25 @@ class ResPartner(models.Model):
         for partner in self:
             partner.credit_allowed = partner.customer_classification == 'old'
 
-    @api.depends('credit_limit')
+    @api.depends('credit_limit', 'customer_classification')
     def _compute_outstanding_debt(self):
+        # Batch: get all unpaid invoices for all partners at once
+        if self.ids:
+            invoices = self.env['account.move'].search_read(
+                [('partner_id', 'in', self.ids), ('move_type', '=', 'out_invoice'),
+                 ('state', '=', 'posted'), ('payment_state', '!=', 'paid')],
+                ['partner_id', 'amount_residual']
+            )
+            # Sum by partner
+            debt_map = {}
+            for inv in invoices:
+                pid = inv['partner_id'][0]
+                debt_map[pid] = debt_map.get(pid, 0) + inv['amount_residual']
+        else:
+            debt_map = {}
+
         for partner in self:
-            invoices = self.env['account.move'].search([
-                ('partner_id', '=', partner.id),
-                ('move_type', '=', 'out_invoice'),
-                ('state', '=', 'posted'),
-                ('amount_residual', '>', 0),
-            ])
-            partner.outstanding_debt = sum(invoices.mapped('amount_residual'))
+            partner.outstanding_debt = debt_map.get(partner.id, 0)
             partner.credit_available = partner.credit_limit - partner.outstanding_debt
             partner.credit_exceeded = (
                 partner.customer_classification == 'old'
