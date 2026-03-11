@@ -11,7 +11,7 @@
 | Phase 4 | CEO Dashboard + full test suite | Done |
 | Phase 5 | Hardening (backup, monitoring, alerting) | Pending |
 
-**Test Results:** 10/10 test cases passed, tất cả 24 MCP tools hoạt động.
+**Test Results:** 10/10 test cases passed, tất cả 26 MCP tools hoạt động.
 Xem chi tiết testcase tại `deploy/openclaw/testcase-slides.pptx` và `deploy/openclaw/testcase-slides.html`.
 
 ## How to Interact with Odoo
@@ -78,7 +78,7 @@ Custom fields added by `masios_credit_control` module:
 - `credit_available`: Monetary computed — credit_limit - outstanding_debt
 - `credit_exceeded`: Boolean computed — True khi vượt hạn mức
 
-## Available MCP Tools (24)
+## Available MCP Tools (26)
 
 ### Discovery & Introspection (6)
 - `odoo_server_info` — Server version and connection info
@@ -109,9 +109,13 @@ Custom fields added by `masios_credit_control` module:
 - `odoo_create_sale_order` — Create quotation with order lines
 - `odoo_confirm_sale_order` — Confirm a sale order (triggers credit check)
 
-### Invoices (2)
+### Invoices (3)
 - `odoo_invoice_summary` — List invoices with optional partner/state filter
 - `odoo_create_invoice_from_so` — Create invoice from confirmed sale order
+- `odoo_invoice_pdf` — Download invoice PDF (base64-encoded)
+
+### Sale Order PDF (1)
+- `odoo_sale_order_pdf` — Download sale order/quotation PDF (base64-encoded)
 
 ### Credit Control (3)
 - `odoo_customer_credit_status` — Credit info for a customer
@@ -166,6 +170,13 @@ odoo_write(model="crm.lead", ids="[2]", values='{"stage_id":4}')  # Move to Won
 - Pipeline theo stage: `odoo_pipeline_by_stage()`
 - Truy cập web: `/dashboard` (đăng nhập Odoo)
 
+### PDF Download & Send via Telegram
+1. Lấy PDF: `odoo_sale_order_pdf(order_id)` hoặc `odoo_invoice_pdf(invoice_id)`
+2. MCP server gọi Odoo HTTP report engine với session auth, trả về base64-encoded PDF trong JSON response
+3. Agent dùng `send_pdf.py` helper để decode base64 và gửi qua Telegram Bot API
+4. File-based approach: lưu PDF tạm vào `/tmp` để xử lý base64 payload lớn, tránh command-line length limits
+5. Flow: MCP tool → base64 JSON → decode to `/tmp/*.pdf` → Telegram Bot API sendDocument
+
 ## Authentication
 
 - **Claude Code (stdio)**: No token needed — runs locally via `.mcp.json`
@@ -215,7 +226,7 @@ deploy/openclaw/
 ├── config/
 │   ├── openclaw.template.json    # Template OpenClaw config
 │   ├── mcporter.template.json    # Template mcporter config
-│   ├── exec-approvals.json       # MCP tool auto-approve list
+│   ├── exec-approvals.json       # MCP tool auto-approve list (see below)
 │   └── workspace/                # Agent workspace
 ├── testcase-slides.pptx          # Test case slides (PowerPoint)
 ├── testcase-slides.html          # Test case slides (HTML)
@@ -242,6 +253,22 @@ cp mcporter.template.json mcporter.json    # Điền MCP server URL + bearer tok
 # 3. Build & run
 cd deploy/openclaw
 docker-compose up -d
+```
+
+### Exec Approvals
+File `deploy/openclaw/config/exec-approvals.json` cho phép OpenClaw agent tự động approve các lệnh shell thường dùng. Patterns hiện tại:
+- `python3` — chạy helper scripts (send_pdf.py, etc.)
+- `rm` — xóa file tạm
+- `cat` — đọc file content
+- `base64` — decode base64 payloads
+- `curl` — gọi API (Telegram Bot API, etc.)
+- `jq` — parse JSON responses
+
+### Docker File Permissions
+**Known issue:** Files copied vào container bằng `docker cp` sẽ thuộc root:root. Cần chown sau khi copy:
+```bash
+docker cp file.py container:/home/openclaw/
+docker exec container chown openclaw:openclaw /home/openclaw/file.py
 ```
 
 ### Model khuyến nghị
