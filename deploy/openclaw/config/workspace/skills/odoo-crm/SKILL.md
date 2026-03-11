@@ -47,11 +47,14 @@ mcporter call odoo.odoo_sale_order_summary partner_id=5 state=sale
 ```bash
 mcporter call odoo.odoo_create_sale_order partner_id=ID 'order_lines=[{"product_id":1,"quantity":10}]'
 ```
-**⚠️ QUY TẮC: Sau khi tạo báo giá thành công, LUÔN TỰ ĐỘNG gửi PDF cho user qua Telegram (không cần hỏi). Workflow:**
-1. Tạo báo giá → lấy order_id
-2. Gọi odoo_sale_order_pdf → save /tmp/pdf_result.json
-3. Gọi send_pdf.py CHAT_ID → gửi PDF qua Telegram
-4. Xóa file tạm
+**⚠️ QUY TẮC TẠO BÁO GIÁ:**
+1. Tìm khách hàng trong hệ thống
+2. Liệt kê sản phẩm có sẵn và HỎI user chọn sản phẩm + số lượng (BẮT BUỘC hỏi trước khi tạo)
+3. Sau khi user chọn xong → tạo báo giá
+4. Tạo xong → TỰ ĐỘNG gửi PDF qua Telegram (không cần hỏi):
+   - Gọi odoo_sale_order_pdf → save /tmp/pdf_result.json
+   - Gọi send_pdf.py CHAT_ID → gửi PDF
+   - Xóa file tạm
 
 ### Khi user muốn "xác nhận đơn hàng"
 ```bash
