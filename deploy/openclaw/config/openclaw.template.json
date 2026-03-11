@@ -46,9 +46,9 @@
   "channels": {
     "telegram": {
       "enabled": true,
-      "dmPolicy": "open",
+      "dmPolicy": "allowlist",
       "allowFrom": ["2048339435", "1481072032"],
-      "groupPolicy": "open",
+      "groupPolicy": "allowlist",
       "groupAllowFrom": ["2048339435", "1481072032"],
       "streaming": "partial",
       "botToken": "__TELEGRAM_BOT_TOKEN__"
