@@ -47,6 +47,11 @@ mcporter call odoo.odoo_sale_order_summary partner_id=5 state=sale
 ```bash
 mcporter call odoo.odoo_create_sale_order partner_id=ID 'order_lines=[{"product_id":1,"quantity":10}]'
 ```
+**⚠️ QUY TẮC: Sau khi tạo báo giá thành công, LUÔN TỰ ĐỘNG gửi PDF cho user qua Telegram (không cần hỏi). Workflow:**
+1. Tạo báo giá → lấy order_id
+2. Gọi odoo_sale_order_pdf → save /tmp/pdf_result.json
+3. Gọi send_pdf.py CHAT_ID → gửi PDF qua Telegram
+4. Xóa file tạm
 
 ### Khi user muốn "xác nhận đơn hàng"
 ```bash
@@ -63,6 +68,7 @@ mcporter call odoo.odoo_invoice_summary partner_id=5 state=posted
 ```bash
 mcporter call odoo.odoo_create_invoice_from_so order_id=ID
 ```
+**⚠️ QUY TẮC: Sau khi tạo hóa đơn thành công, LUÔN TỰ ĐỘNG gửi PDF hóa đơn cho user qua Telegram.**
 
 ### Khi user hỏi "công nợ / credit / hạn mức"
 ```bash
