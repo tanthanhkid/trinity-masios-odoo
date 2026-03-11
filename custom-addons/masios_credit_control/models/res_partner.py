@@ -42,9 +42,10 @@ class ResPartner(models.Model):
     @api.depends('credit_limit', 'customer_classification')
     def _compute_outstanding_debt(self):
         # Batch: get all unpaid invoices for all partners at once
-        if self.ids:
+        real_ids = [pid for pid in self.ids if isinstance(pid, int)]
+        if real_ids:
             invoices = self.env['account.move'].search_read(
-                [('partner_id', 'in', self.ids), ('move_type', '=', 'out_invoice'),
+                [('partner_id', 'in', real_ids), ('move_type', '=', 'out_invoice'),
                  ('state', '=', 'posted'), ('payment_state', '!=', 'paid')],
                 ['partner_id', 'amount_residual']
             )

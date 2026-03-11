@@ -11,7 +11,6 @@ Requires: pip install mcp (xmlrpc is stdlib)
 """
 
 import base64
-import hashlib
 import hmac
 import http.cookiejar
 import json
@@ -240,35 +239,36 @@ class OdooClient:
 
     def _get_http_opener(self):
         """Get an authenticated HTTP opener with session cookies."""
-        if hasattr(self, "_http_opener") and self._http_opener:
-            return self._http_opener
+        with self._lock:
+            if hasattr(self, "_http_opener") and self._http_opener:
+                return self._http_opener
 
-        cj = http.cookiejar.CookieJar()
-        opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(cj)
-        )
+            cj = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(cj)
+            )
 
-        auth_url = f"{self.url}/web/session/authenticate"
-        payload = json.dumps({
-            "jsonrpc": "2.0", "method": "call", "id": 1,
-            "params": {
-                "db": self.db,
-                "login": self.username,
-                "password": self.password,
-            },
-        }).encode("utf-8")
+            auth_url = f"{self.url}/web/session/authenticate"
+            payload = json.dumps({
+                "jsonrpc": "2.0", "method": "call", "id": 1,
+                "params": {
+                    "db": self.db,
+                    "login": self.username,
+                    "password": self.password,
+                },
+            }).encode("utf-8")
 
-        req = urllib.request.Request(
-            auth_url, data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        resp = opener.open(req, timeout=30)
-        result = json.loads(resp.read().decode("utf-8"))
-        if result.get("error"):
-            raise ConnectionError(f"HTTP auth failed: {result['error']}")
+            req = urllib.request.Request(
+                auth_url, data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            resp = opener.open(req, timeout=30)
+            result = json.loads(resp.read().decode("utf-8"))
+            if result.get("error"):
+                raise ConnectionError(f"HTTP auth failed: {result['error']}")
 
-        self._http_opener = opener
-        return opener
+            self._http_opener = opener
+            return opener
 
     def download_report(self, report_name: str, record_ids: list[int]) -> bytes:
         """Download a PDF report from Odoo's report engine via HTTP."""

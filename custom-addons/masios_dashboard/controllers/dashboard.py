@@ -74,7 +74,7 @@ class DashboardController(http.Controller):
         )
         return [{
             'stage': item['stage_id'][1] if item['stage_id'] else 'Unknown',
-            'count': item['stage_id_count'],
+            'count': item.get('__count', item.get('stage_id_count', 0)),
             'value': item['expected_revenue'] or 0,
         } for item in data]
 
@@ -126,4 +126,9 @@ class DashboardController(http.Controller):
             ['name', 'credit_limit', 'outstanding_debt', 'credit_exceeded'],
             limit=20
         )
-        return [p for p in partners if p.get('credit_exceeded')]
+        alerts = []
+        for p in partners:
+            if p.get('credit_exceeded'):
+                p['exceeded_by'] = p.get('outstanding_debt', 0) - p.get('credit_limit', 0)
+                alerts.append(p)
+        return alerts
