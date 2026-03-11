@@ -3,14 +3,21 @@
   "agents": {
     "*": {
       "allowlist": [
-        {"pattern": "mcporter"},
-        {"pattern": "mcporter call odoo.*"},
-        {"pattern": "python3 *send_pdf*"},
+        {"pattern": "mcporter *"},
+        {"pattern": "python3 *"},
         {"pattern": "rm -f /tmp/*"},
         {"pattern": "base64 *"},
         {"pattern": "curl *api.telegram.org*"},
         {"pattern": "jq *"},
-        {"pattern": "cat /tmp/*"}
+        {"pattern": "cat *"},
+        {"pattern": "ls *"},
+        {"pattern": "find *"},
+        {"pattern": "head *"},
+        {"pattern": "tail *"},
+        {"pattern": "wc *"},
+        {"pattern": "echo *"},
+        {"pattern": "stat *"},
+        {"pattern": "test *"}
       ]
     }
   }
