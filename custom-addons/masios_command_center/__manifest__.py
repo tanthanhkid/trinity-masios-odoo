@@ -21,11 +21,13 @@
         'account',
         'masios_credit_control',
         'project',
+        'website',
     ],
     'data': [
         'security/ir.model.access.csv',
         'data/team_data.xml',
         'views/telegram_user_views.xml',
+        'views/welcome_template.xml',
         'data/telegram_role_data.xml',
         'data/telegram_user_data.xml',
     ],

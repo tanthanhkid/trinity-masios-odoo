@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="welcome_page" name="Welcome Page">
+        <t t-call="web.frontend_layout">
+            <t t-set="no_header" t-value="True"/>
+            <t t-set="no_footer" t-value="True"/>
+
+            <style>
+                :root {
+                    --role-color: <t t-esc="role['color']"/>;
+                }
+                body { background: #f8fafc; }
+                .welcome-hero {
+                    background: linear-gradient(135deg, var(--role-color) 0%, color-mix(in srgb, var(--role-color) 70%, #000) 100%);
+                    color: white;
+                    padding: 3rem 0 2.5rem;
+                    margin-bottom: 2rem;
+                }
+                .welcome-hero h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+                .welcome-hero p { font-size: 1.1rem; opacity: 0.9; max-width: 700px; }
+                .role-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    background: rgba(255,255,255,0.2);
+                    padding: 0.4rem 1rem;
+                    border-radius: 2rem;
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                    margin-bottom: 1rem;
+                }
+                .feature-card {
+                    background: white;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    padding: 1.5rem;
+                    height: 100%;
+                    transition: all 0.2s ease;
+                    text-decoration: none !important;
+                    color: inherit !important;
+                    display: block;
+                }
+                .feature-card:hover {
+                    border-color: var(--role-color);
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    transform: translateY(-2px);
+                }
+                .feature-icon {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 10px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 1.3rem;
+                    color: white;
+                    background: var(--role-color);
+                    margin-bottom: 1rem;
+                }
+                .feature-card h5 { font-size: 1rem; font-weight: 600; color: #1e293b; margin-bottom: 0.4rem; }
+                .feature-card p { font-size: 0.85rem; color: #64748b; margin: 0; line-height: 1.4; }
+                .tips-section {
+                    background: white;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    padding: 1.5rem 2rem;
+                    margin-top: 2rem;
+                }
+                .tips-section h4 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #1e293b; }
+                .tip-item {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 0.75rem;
+                    padding: 0.5rem 0;
+                    font-size: 0.9rem;
+                    color: #475569;
+                }
+                .tip-item .tip-icon {
+                    color: var(--role-color);
+                    font-size: 0.8rem;
+                    margin-top: 0.2rem;
+                    flex-shrink: 0;
+                }
+                .telegram-cta {
+                    background: linear-gradient(135deg, #0088cc, #0077b5);
+                    color: white;
+                    border-radius: 12px;
+                    padding: 1.5rem 2rem;
+                    margin-top: 1.5rem;
+                    display: flex;
+                    align-items: center;
+                    gap: 1.5rem;
+                }
+                .telegram-cta i { font-size: 2.5rem; }
+                .telegram-cta h5 { color: white; font-weight: 600; margin-bottom: 0.3rem; }
+                .telegram-cta p { color: rgba(255,255,255,0.85); margin: 0; font-size: 0.9rem; }
+                .back-to-odoo {
+                    position: fixed;
+                    top: 12px;
+                    right: 16px;
+                    z-index: 1000;
+                    background: rgba(255,255,255,0.2);
+                    color: white;
+                    border: 1px solid rgba(255,255,255,0.3);
+                    padding: 0.4rem 1rem;
+                    border-radius: 6px;
+                    text-decoration: none;
+                    font-size: 0.85rem;
+                    transition: all 0.2s;
+                }
+                .back-to-odoo:hover { background: rgba(255,255,255,0.3); color: white; }
+            </style>
+
+            <a href="/odoo" class="back-to-odoo">
+                <i class="fa fa-arrow-left"></i> Quay lại Odoo
+            </a>
+
+            <!-- Hero Section -->
+            <div class="welcome-hero">
+                <div class="container">
+                    <div class="role-badge">
+                        <i t-attf-class="fa #{role['icon']}"></i>
+                        <span t-esc="role['title']"/>
+                    </div>
+                    <h1>Xin chào, <t t-esc="user.name"/>!</h1>
+                    <p t-esc="role['description']"/>
+                </div>
+            </div>
+
+            <!-- Feature Cards -->
+            <div class="container pb-5">
+                <h4 style="font-weight: 600; margin-bottom: 1.2rem; color: #1e293b;">
+                    <i class="fa fa-th-large" style="margin-right: 0.5rem;"></i>
+                    Tính năng của bạn
+                </h4>
+                <div class="row g-3">
+                    <t t-foreach="role['features']" t-as="feature">
+                        <div class="col-md-4 col-sm-6">
+                            <a t-att-href="feature['url']" class="feature-card">
+                                <div class="feature-icon">
+                                    <i t-attf-class="fa #{feature['icon']}"></i>
+                                </div>
+                                <h5 t-esc="feature['name']"/>
+                                <p t-esc="feature['desc']"/>
+                            </a>
+                        </div>
+                    </t>
+                </div>
+
+                <!-- Tips Section -->
+                <div class="tips-section">
+                    <h4>
+                        <i class="fa fa-lightbulb" style="color: #f59e0b; margin-right: 0.5rem;"></i>
+                        Mẹo sử dụng Telegram Bot
+                    </h4>
+                    <t t-foreach="role['tips']" t-as="tip">
+                        <div class="tip-item">
+                            <i class="fa fa-check-circle tip-icon"></i>
+                            <span t-esc="tip"/>
+                        </div>
+                    </t>
+                </div>
+
+                <!-- Telegram CTA -->
+                <div class="telegram-cta">
+                    <i class="fab fa-telegram-plane"></i>
+                    <div>
+                        <h5>MASI OS Telegram Bot</h5>
+                        <p>Truy cập nhanh qua Telegram: gõ /masi để xem menu lệnh theo vai trò của bạn.
+                           Bot sẽ tự động hiển thị các lệnh phù hợp với quyền hạn của bạn.</p>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>
