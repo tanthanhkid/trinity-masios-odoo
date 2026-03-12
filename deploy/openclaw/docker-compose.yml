@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: openclaw-agent
-    restart: unless-stopped
+    restart: always
     ports:
       - "${OPENCLAW_PORT:-18789}:18789"
     environment:

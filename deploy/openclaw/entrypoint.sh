@@ -29,5 +29,9 @@ export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN}"
 openclaw config set agents.defaults.elevatedDefault full 2>/dev/null || true
 openclaw config set tools.exec.security full 2>/dev/null || true
 
+# --- Disable OpenClaw native commands on Telegram (only show custom /masi etc.) ---
+openclaw config set commands.native false 2>/dev/null || true
+openclaw config set commands.nativeSkills false 2>/dev/null || true
+
 # Run OpenClaw gateway
 exec openclaw gateway run --bind lan --port 18789 "$@"

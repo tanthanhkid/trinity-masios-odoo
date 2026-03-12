@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Team Hunter: chuyên khai thác khách hàng mới -->
+        <record id="team_hunter" model="crm.team">
+            <field name="name">Hunter Team</field>
+            <field name="sequence">10</field>
+        </record>
+
+        <!-- Team Farmer: chuyên chăm sóc khách hàng cũ -->
+        <record id="team_farmer" model="crm.team">
+            <field name="name">Farmer Team</field>
+            <field name="sequence">20</field>
+        </record>
+    </data>
+</odoo>

@@ -22,6 +22,7 @@ import threading
 import urllib.error
 import urllib.request
 import xmlrpc.client
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -965,7 +966,6 @@ def odoo_customers_exceeding_credit(limit: int = 50) -> str:
 @_odoo_error
 def odoo_dashboard_kpis() -> str:
     """Get CEO dashboard KPIs: pipeline value, monthly revenue, total debt, new leads count."""
-    from datetime import datetime
     client = get_client()
     today = datetime.now()
     first_day = today.replace(day=1).strftime("%Y-%m-%d")
@@ -1108,6 +1108,1337 @@ def odoo_invoice_pdf(invoice_id: int) -> str:
         "pdf_base64": b64,
         "size_bytes": len(pdf_bytes),
     }, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Command Center Helpers
+# ---------------------------------------------------------------------------
+
+_team_cache: dict[str, int | None] = {}
+
+
+def _get_team_ids() -> dict[str, int | None]:
+    """Resolve Hunter/Farmer team IDs from crm.team. Cached after first call."""
+    global _team_cache
+    if _team_cache:
+        return _team_cache
+    client = get_client()
+    teams = client.search_read(
+        "crm.team", [],
+        fields=["id", "name"],
+        limit=100,
+    )
+    hunter_id = None
+    farmer_id = None
+    for t in teams:
+        name_lower = (t.get("name") or "").lower()
+        if "hunter" in name_lower:
+            hunter_id = t["id"]
+        elif "farmer" in name_lower:
+            farmer_id = t["id"]
+    _team_cache = {"hunter": hunter_id, "farmer": farmer_id}
+    logger.info(f"Team IDs resolved: hunter={hunter_id}, farmer={farmer_id}")
+    return _team_cache
+
+
+def _date_helpers() -> dict[str, str]:
+    """Return common date boundaries as ISO strings."""
+    today = date.today()
+    first_of_month = today.replace(day=1)
+    first_of_week = today - timedelta(days=today.weekday())
+    return {
+        "today": today.isoformat(),
+        "first_of_month": first_of_month.isoformat(),
+        "first_of_week": first_of_week.isoformat(),
+        "yesterday": (today - timedelta(days=1)).isoformat(),
+        "now": datetime.now().isoformat(),
+    }
+
+
+def _period_start(period: str) -> str:
+    """Get the start date for a period string."""
+    d = _date_helpers()
+    if period == "today":
+        return d["today"]
+    elif period == "week":
+        return d["first_of_week"]
+    else:  # month (default)
+        return d["first_of_month"]
+
+
+def _safe_read_group(client, model: str, domain: list, fields: list, groupby: list, **kw):
+    """Wrapper for read_group that catches errors for missing fields/models."""
+    try:
+        return client.execute(model, "read_group", domain, fields, groupby, **kw)
+    except xmlrpc.client.Fault as e:
+        logger.warning(f"read_group on {model} failed: {e.faultString}")
+        return []
+
+
+def _check_cc_field(client, field_name: str = "hunter_farmer_type") -> bool:
+    """Check if masios_command_center fields exist on a model."""
+    try:
+        fields = client.fields_get("sale.order", attributes=["string", "type"])
+        return field_name in fields
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Command Center Tools (14 tools)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@_odoo_error
+def odoo_morning_brief() -> str:
+    """CEO morning briefing: hunter KPIs, farmer KPIs, AR task summary, top alerts.
+    Returns 4 blocks: hunter_kpis, farmer_kpis, ar_task_summary, top_alerts.
+    """
+    client = get_client()
+    d = _date_helpers()
+    teams = _get_team_ids()
+    today = d["today"]
+    first_of_month = d["first_of_month"]
+
+    # --- Hunter KPIs ---
+    hunter_domain_base = []
+    if teams.get("hunter"):
+        hunter_domain_base = [("team_id", "=", teams["hunter"])]
+
+    hunter_leads_new = client.search_count(
+        "crm.lead",
+        hunter_domain_base + [("create_date", ">=", first_of_month)],
+    )
+    hunter_leads_won = client.search_count(
+        "crm.lead",
+        hunter_domain_base + [
+            ("stage_id.is_won", "=", True),
+            ("date_closed", ">=", first_of_month),
+        ],
+    )
+    # Hunter revenue (first orders this month)
+    hunter_so_domain = [("state", "in", ("sale", "done")), ("date_order", ">=", first_of_month)]
+    has_cc = _check_cc_field(client, "order_type")
+    if has_cc:
+        hunter_so_domain.append(("order_type", "=", "first_order"))
+    hunter_rev_group = _safe_read_group(
+        client, "sale.order", hunter_so_domain,
+        ["amount_total"], [],
+    )
+    hunter_revenue = (hunter_rev_group[0]["amount_total"] or 0) if hunter_rev_group else 0
+
+    hunter_kpis = {
+        "leads_new_this_month": hunter_leads_new,
+        "leads_won_this_month": hunter_leads_won,
+        "first_order_revenue": hunter_revenue,
+    }
+
+    # --- Farmer KPIs ---
+    farmer_domain_base = []
+    if teams.get("farmer"):
+        farmer_domain_base = [("team_id", "=", teams["farmer"])]
+
+    farmer_so_domain = [("state", "in", ("sale", "done")), ("date_order", ">=", first_of_month)]
+    if has_cc:
+        farmer_so_domain.append(("order_type", "=", "repeat_order"))
+    farmer_rev_group = _safe_read_group(
+        client, "sale.order", farmer_so_domain,
+        ["amount_total"], [],
+    )
+    farmer_revenue = (farmer_rev_group[0]["amount_total"] or 0) if farmer_rev_group else 0
+
+    # Sleeping customers (no order in 90+ days) — approximate
+    cutoff_90 = (date.today() - timedelta(days=90)).isoformat()
+    sleeping_count = 0
+    try:
+        all_customers = client.search_read(
+            "res.partner",
+            [("customer_rank", ">", 0)],
+            fields=["id"],
+            limit=200,
+        )
+        if all_customers:
+            cust_ids = [c["id"] for c in all_customers]
+            active_orders = client.search_read(
+                "sale.order",
+                [("partner_id", "in", cust_ids), ("date_order", ">=", cutoff_90), ("state", "in", ("sale", "done"))],
+                fields=["partner_id"],
+                limit=200,
+            )
+            active_cust_ids = set(o["partner_id"][0] for o in active_orders if o.get("partner_id"))
+            sleeping_count = len(set(cust_ids) - active_cust_ids)
+    except Exception as e:
+        logger.warning(f"Sleeping customer calc failed: {e}")
+
+    farmer_kpis = {
+        "repeat_order_revenue": farmer_revenue,
+        "sleeping_customers_90d": sleeping_count,
+    }
+
+    # --- AR Task Summary ---
+    overdue_inv = client.search_count(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0), ("invoice_date_due", "<", today)],
+    )
+    due_7d = client.search_count(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0),
+         ("invoice_date_due", ">=", today),
+         ("invoice_date_due", "<=", (date.today() + timedelta(days=7)).isoformat())],
+    )
+    ar_debt_group = _safe_read_group(
+        client, "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"), ("amount_residual", ">", 0)],
+        ["amount_residual"], [],
+    )
+    total_ar = (ar_debt_group[0]["amount_residual"] or 0) if ar_debt_group else 0
+
+    ar_task_summary = {
+        "total_receivable": total_ar,
+        "overdue_invoices": overdue_inv,
+        "due_within_7d": due_7d,
+    }
+
+    # --- Top Alerts ---
+    alerts = []
+    # SLA breached leads (open leads older than 48h without activity)
+    sla_cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+    old_leads = client.search_read(
+        "crm.lead",
+        [("type", "=", "opportunity"), ("active", "=", True),
+         ("stage_id.is_won", "=", False), ("create_date", "<", sla_cutoff)],
+        fields=["name", "partner_id", "create_date", "stage_id"],
+        limit=5, order="create_date asc",
+    )
+    for lead in old_leads:
+        alerts.append({
+            "type": "sla_breach",
+            "message": f"Lead '{lead['name']}' open since {lead['create_date']}",
+            "record": f"crm.lead,{lead['id']}",
+        })
+
+    # 30d+ overdue invoices
+    overdue_30 = (date.today() - timedelta(days=30)).isoformat()
+    old_invoices = client.search_read(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0), ("invoice_date_due", "<", overdue_30)],
+        fields=["name", "partner_id", "amount_residual", "invoice_date_due"],
+        limit=5, order="invoice_date_due asc",
+    )
+    for inv in old_invoices:
+        alerts.append({
+            "type": "overdue_invoice_30d",
+            "message": f"Invoice {inv['name']} overdue since {inv['invoice_date_due']}, "
+                       f"amount: {inv['amount_residual']}",
+            "record": f"account.move,{inv['id']}",
+        })
+
+    return json.dumps({
+        "date": today,
+        "hunter_kpis": hunter_kpis,
+        "farmer_kpis": farmer_kpis,
+        "ar_task_summary": ar_task_summary,
+        "top_alerts": alerts[:10],
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_ceo_alert(limit: int = 5) -> str:
+    """Top critical issues needing CEO attention: SLA breached leads, 30d+ overdue invoices,
+    sleeping VIP customers, critical overdue tasks.
+
+    Args:
+        limit: Max alerts per category (default 5, max 20)
+    """
+    client = get_client()
+    limit = min(limit, 20)
+    d = _date_helpers()
+    today = d["today"]
+    alerts = []
+
+    # 1. SLA breached leads (open > 48h, not won)
+    sla_cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+    old_leads = client.search_read(
+        "crm.lead",
+        [("type", "=", "opportunity"), ("active", "=", True),
+         ("stage_id.is_won", "=", False), ("create_date", "<", sla_cutoff)],
+        fields=["name", "partner_id", "create_date", "stage_id", "user_id", "expected_revenue"],
+        limit=limit, order="create_date asc",
+    )
+    for lead in old_leads:
+        hours_open = (datetime.now() - datetime.fromisoformat(str(lead["create_date"]))).total_seconds() / 3600
+        alerts.append({
+            "severity": "critical",
+            "category": "sla_breach",
+            "summary": f"Lead '{lead['name']}' open {int(hours_open)}h (SLA breached)",
+            "partner": lead["partner_id"][1] if lead["partner_id"] else None,
+            "owner": lead["user_id"][1] if lead["user_id"] else None,
+            "expected_revenue": lead.get("expected_revenue", 0),
+            "record_id": lead["id"],
+        })
+
+    # 2. 30d+ overdue invoices
+    overdue_30 = (date.today() - timedelta(days=30)).isoformat()
+    old_invoices = client.search_read(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0), ("invoice_date_due", "<", overdue_30)],
+        fields=["name", "partner_id", "amount_residual", "invoice_date_due"],
+        limit=limit, order="amount_residual desc",
+    )
+    for inv in old_invoices:
+        days_overdue = (date.today() - date.fromisoformat(str(inv["invoice_date_due"]))).days
+        alerts.append({
+            "severity": "critical",
+            "category": "overdue_invoice_30d",
+            "summary": f"Invoice {inv['name']} overdue {days_overdue}d, amount {inv['amount_residual']}",
+            "partner": inv["partner_id"][1] if inv["partner_id"] else None,
+            "amount": inv["amount_residual"],
+            "record_id": inv["id"],
+        })
+
+    # 3. Sleeping VIP customers (customer_rank > 0, no order in 90d)
+    cutoff_90 = (date.today() - timedelta(days=90)).isoformat()
+    try:
+        vip_customers = client.search_read(
+            "res.partner",
+            [("customer_rank", ">", 0)],
+            fields=["id", "name", "customer_rank"],
+            limit=200, order="customer_rank desc",
+        )
+        if vip_customers:
+            vip_ids = [c["id"] for c in vip_customers]
+            active_orders = client.search_read(
+                "sale.order",
+                [("partner_id", "in", vip_ids), ("date_order", ">=", cutoff_90),
+                 ("state", "in", ("sale", "done"))],
+                fields=["partner_id"],
+                limit=200,
+            )
+            active_set = set(o["partner_id"][0] for o in active_orders if o.get("partner_id"))
+            sleeping_vips = [c for c in vip_customers if c["id"] not in active_set]
+            for cust in sleeping_vips[:limit]:
+                alerts.append({
+                    "severity": "warning",
+                    "category": "sleeping_vip",
+                    "summary": f"VIP customer '{cust['name']}' no order in 90+ days",
+                    "partner": cust["name"],
+                    "record_id": cust["id"],
+                })
+    except Exception as e:
+        logger.warning(f"VIP sleeping check failed: {e}")
+
+    # 4. Overdue tasks (project.task if available)
+    try:
+        overdue_tasks = client.search_read(
+            "project.task",
+            [("date_deadline", "<", today), ("stage_id.fold", "=", False)],
+            fields=["name", "user_ids", "date_deadline", "project_id", "priority"],
+            limit=limit, order="date_deadline asc",
+        )
+        for task in overdue_tasks:
+            alerts.append({
+                "severity": "warning",
+                "category": "overdue_task",
+                "summary": f"Task '{task['name']}' overdue since {task['date_deadline']}",
+                "project": task["project_id"][1] if task["project_id"] else None,
+                "record_id": task["id"],
+            })
+    except Exception as e:
+        logger.warning(f"Task check skipped (project module may not be installed): {e}")
+
+    return json.dumps({
+        "date": today,
+        "total_alerts": len(alerts),
+        "alerts": alerts,
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_revenue_today(date_filter: str = "") -> str:
+    """Today's revenue split by order type (hunter=first_order vs farmer=repeat_order).
+    Uses read_group on sale.order grouped by order_type.
+
+    Args:
+        date_filter: ISO date string (default: today). E.g. '2026-03-12'
+    """
+    client = get_client()
+    target_date = date_filter or _date_helpers()["today"]
+    next_date = (date.fromisoformat(target_date) + timedelta(days=1)).isoformat()
+
+    domain = [
+        ("state", "in", ("sale", "done")),
+        ("date_order", ">=", target_date),
+        ("date_order", "<", next_date),
+    ]
+
+    has_cc = _check_cc_field(client, "order_type")
+    if has_cc:
+        groups = _safe_read_group(
+            client, "sale.order", domain,
+            ["amount_total", "order_type"], ["order_type"],
+        )
+        result = {"date": target_date, "breakdown": []}
+        total = 0
+        for g in groups:
+            entry = {
+                "order_type": g.get("order_type") or "unclassified",
+                "count": g.get("__count", g.get("order_type_count", 0)),
+                "revenue": g.get("amount_total", 0) or 0,
+            }
+            total += entry["revenue"]
+            result["breakdown"].append(entry)
+        result["total_revenue"] = total
+    else:
+        # No order_type field — just total
+        groups = _safe_read_group(
+            client, "sale.order", domain,
+            ["amount_total"], [],
+        )
+        total = (groups[0]["amount_total"] or 0) if groups else 0
+        count_total = client.search_count("sale.order", domain)
+        result = {
+            "date": target_date,
+            "total_revenue": total,
+            "total_orders": count_total,
+            "note": "order_type field not available — install masios_command_center for hunter/farmer split",
+        }
+
+    return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_brief_hunter(period: str = "month") -> str:
+    """Hunter team summary: leads_new, SLA counts, quotes pending, first_orders count+revenue, conversion_rate.
+
+    Args:
+        period: 'today', 'week', or 'month' (default 'month')
+    """
+    client = get_client()
+    teams = _get_team_ids()
+    start = _period_start(period)
+    d = _date_helpers()
+    today = d["today"]
+
+    team_domain = []
+    if teams.get("hunter"):
+        team_domain = [("team_id", "=", teams["hunter"])]
+
+    # Leads new
+    leads_new = client.search_count(
+        "crm.lead",
+        team_domain + [("create_date", ">=", start)],
+    )
+
+    # SLA: leads open > 48h (breached), open <= 48h (ok)
+    sla_cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+    leads_open = client.search_count(
+        "crm.lead",
+        team_domain + [("type", "=", "opportunity"), ("active", "=", True),
+                       ("stage_id.is_won", "=", False)],
+    )
+    sla_breached = client.search_count(
+        "crm.lead",
+        team_domain + [("type", "=", "opportunity"), ("active", "=", True),
+                       ("stage_id.is_won", "=", False), ("create_date", "<", sla_cutoff)],
+    )
+    sla_ok = leads_open - sla_breached
+
+    # Quotes pending (draft sale orders)
+    quotes_pending = client.search_count(
+        "sale.order",
+        [("state", "=", "draft")] + ([("team_id", "=", teams["hunter"])] if teams.get("hunter") else []),
+    )
+
+    # First orders (confirmed SO in period)
+    fo_domain = [("state", "in", ("sale", "done")), ("date_order", ">=", start)]
+    has_cc = _check_cc_field(client, "order_type")
+    if has_cc:
+        fo_domain.append(("order_type", "=", "first_order"))
+    if teams.get("hunter"):
+        fo_domain.append(("team_id", "=", teams["hunter"]))
+
+    fo_group = _safe_read_group(
+        client, "sale.order", fo_domain,
+        ["amount_total"], [],
+    )
+    first_order_count = (fo_group[0].get("__count", 0)) if fo_group else 0
+    first_order_revenue = (fo_group[0]["amount_total"] or 0) if fo_group else 0
+
+    # Won leads in period
+    leads_won = client.search_count(
+        "crm.lead",
+        team_domain + [("stage_id.is_won", "=", True), ("date_closed", ">=", start)],
+    )
+
+    conversion_rate = round((leads_won / leads_new * 100), 1) if leads_new > 0 else 0
+
+    return json.dumps({
+        "period": period,
+        "period_start": start,
+        "leads_new": leads_new,
+        "leads_open": leads_open,
+        "sla_ok": sla_ok,
+        "sla_breached": sla_breached,
+        "quotes_pending": quotes_pending,
+        "first_orders_count": first_order_count,
+        "first_orders_revenue": first_order_revenue,
+        "leads_won": leads_won,
+        "conversion_rate_pct": conversion_rate,
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_brief_farmer(period: str = "month") -> str:
+    """Farmer team summary: repeat_orders, reorder_due, sleeping by bucket, vip_at_risk, farmer_ar_total.
+
+    Args:
+        period: 'today', 'week', or 'month' (default 'month')
+    """
+    client = get_client()
+    teams = _get_team_ids()
+    start = _period_start(period)
+    d = _date_helpers()
+    today_date = date.today()
+
+    # Repeat orders
+    ro_domain = [("state", "in", ("sale", "done")), ("date_order", ">=", start)]
+    has_cc = _check_cc_field(client, "order_type")
+    if has_cc:
+        ro_domain.append(("order_type", "=", "repeat_order"))
+    if teams.get("farmer"):
+        ro_domain.append(("team_id", "=", teams["farmer"]))
+
+    ro_group = _safe_read_group(
+        client, "sale.order", ro_domain,
+        ["amount_total"], [],
+    )
+    repeat_order_count = (ro_group[0].get("__count", 0)) if ro_group else 0
+    repeat_order_revenue = (ro_group[0]["amount_total"] or 0) if ro_group else 0
+
+    # Sleeping customers by bucket (30-60d, 60-90d, 90d+)
+    customers = client.search_read(
+        "res.partner",
+        [("customer_rank", ">", 0)],
+        fields=["id", "name"],
+        limit=200,
+    )
+    cust_ids = [c["id"] for c in customers]
+
+    buckets = {"30_60d": 0, "60_90d": 0, "90d_plus": 0}
+    if cust_ids:
+        cutoffs = {
+            "30d": (today_date - timedelta(days=30)).isoformat(),
+            "60d": (today_date - timedelta(days=60)).isoformat(),
+            "90d": (today_date - timedelta(days=90)).isoformat(),
+        }
+        # Get last order date per customer
+        for cutoff_name, intervals in [
+            ("90d_plus", (None, cutoffs["90d"])),
+            ("60_90d", (cutoffs["90d"], cutoffs["60d"])),
+            ("30_60d", (cutoffs["60d"], cutoffs["30d"])),
+        ]:
+            # Customers with NO order since the interval start
+            pass  # Simplified: count customers whose last order falls in each bucket
+
+        # Simplified approach: get all recent orders and classify
+        recent_orders = client.search_read(
+            "sale.order",
+            [("partner_id", "in", cust_ids), ("state", "in", ("sale", "done"))],
+            fields=["partner_id", "date_order"],
+            limit=200, order="date_order desc",
+        )
+        last_order = {}
+        for o in recent_orders:
+            pid = o["partner_id"][0] if o["partner_id"] else None
+            if pid and pid not in last_order:
+                last_order[pid] = str(o["date_order"])[:10]
+
+        for cid in cust_ids:
+            lo = last_order.get(cid)
+            if not lo:
+                buckets["90d_plus"] += 1
+                continue
+            lo_date = date.fromisoformat(lo)
+            days_since = (today_date - lo_date).days
+            if days_since >= 90:
+                buckets["90d_plus"] += 1
+            elif days_since >= 60:
+                buckets["60_90d"] += 1
+            elif days_since >= 30:
+                buckets["30_60d"] += 1
+
+    # Farmer AR total
+    ar_domain = [("move_type", "=", "out_invoice"), ("state", "=", "posted"), ("amount_residual", ">", 0)]
+    if teams.get("farmer"):
+        ar_domain.append(("team_id", "=", teams["farmer"]))
+    ar_group = _safe_read_group(
+        client, "account.move", ar_domain,
+        ["amount_residual"], [],
+    )
+    farmer_ar_total = (ar_group[0]["amount_residual"] or 0) if ar_group else 0
+
+    return json.dumps({
+        "period": period,
+        "period_start": start,
+        "repeat_orders_count": repeat_order_count,
+        "repeat_orders_revenue": repeat_order_revenue,
+        "sleeping_buckets": buckets,
+        "total_sleeping": sum(buckets.values()),
+        "farmer_ar_total": farmer_ar_total,
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_brief_ar(team_filter: str = "") -> str:
+    """AR aging report: total_receivable, aging buckets (current/1-30/31-60/61-90/90+),
+    due_within_7d, overdue, disputes, top_debtors.
+
+    Args:
+        team_filter: 'hunter', 'farmer', or '' for all (default '')
+    """
+    client = get_client()
+    d = _date_helpers()
+    today_date = date.today()
+    today = d["today"]
+
+    base_domain = [("move_type", "=", "out_invoice"), ("state", "=", "posted"), ("amount_residual", ">", 0)]
+
+    # Team filter
+    if team_filter:
+        teams = _get_team_ids()
+        team_id = teams.get(team_filter.lower())
+        if team_id:
+            base_domain.append(("team_id", "=", team_id))
+
+    # Total receivable
+    total_group = _safe_read_group(client, "account.move", base_domain, ["amount_residual"], [])
+    total_receivable = (total_group[0]["amount_residual"] or 0) if total_group else 0
+
+    # Get all open invoices for aging
+    invoices = client.search_read(
+        "account.move", base_domain,
+        fields=["name", "partner_id", "amount_residual", "invoice_date_due"],
+        limit=200, order="amount_residual desc",
+    )
+
+    # Aging buckets
+    buckets = {"current": 0, "1_30": 0, "31_60": 0, "61_90": 0, "90_plus": 0}
+    for inv in invoices:
+        due = inv.get("invoice_date_due")
+        if not due:
+            buckets["current"] += inv["amount_residual"]
+            continue
+        due_date = date.fromisoformat(str(due)[:10])
+        days_past = (today_date - due_date).days
+        amt = inv["amount_residual"]
+        if days_past <= 0:
+            buckets["current"] += amt
+        elif days_past <= 30:
+            buckets["1_30"] += amt
+        elif days_past <= 60:
+            buckets["31_60"] += amt
+        elif days_past <= 90:
+            buckets["61_90"] += amt
+        else:
+            buckets["90_plus"] += amt
+
+    # Due within 7d
+    due_7d_date = (today_date + timedelta(days=7)).isoformat()
+    due_7d_count = client.search_count(
+        "account.move",
+        base_domain + [("invoice_date_due", ">=", today), ("invoice_date_due", "<=", due_7d_date)],
+    )
+
+    # Overdue count
+    overdue_count = client.search_count(
+        "account.move",
+        base_domain + [("invoice_date_due", "<", today)],
+    )
+
+    # Top debtors (aggregate by partner)
+    partner_totals: dict[str, float] = {}
+    for inv in invoices:
+        pname = inv["partner_id"][1] if inv["partner_id"] else "Unknown"
+        partner_totals[pname] = partner_totals.get(pname, 0) + inv["amount_residual"]
+    top_debtors = sorted(partner_totals.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return json.dumps({
+        "team_filter": team_filter or "all",
+        "total_receivable": total_receivable,
+        "aging_buckets": buckets,
+        "due_within_7d": due_7d_count,
+        "overdue_count": overdue_count,
+        "top_debtors": [{"partner": p, "amount": a} for p, a in top_debtors],
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_brief_cash(period: str = "month") -> str:
+    """Cash flow: collected (from account.payment), expected_7d, overdue_amount,
+    collection_rate, top_pending invoices.
+
+    Args:
+        period: 'today', 'week', or 'month' (default 'month')
+    """
+    client = get_client()
+    start = _period_start(period)
+    d = _date_helpers()
+    today = d["today"]
+    today_date = date.today()
+
+    # Collected payments in period
+    collected_group = _safe_read_group(
+        client, "account.payment",
+        [("payment_type", "=", "inbound"), ("state", "=", "posted"), ("date", ">=", start)],
+        ["amount"], [],
+    )
+    collected = (collected_group[0]["amount"] or 0) if collected_group else 0
+
+    # Expected in next 7 days (invoices due within 7d)
+    due_7d_date = (today_date + timedelta(days=7)).isoformat()
+    expected_group = _safe_read_group(
+        client, "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0),
+         ("invoice_date_due", ">=", today), ("invoice_date_due", "<=", due_7d_date)],
+        ["amount_residual"], [],
+    )
+    expected_7d = (expected_group[0]["amount_residual"] or 0) if expected_group else 0
+
+    # Overdue amount
+    overdue_group = _safe_read_group(
+        client, "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0), ("invoice_date_due", "<", today)],
+        ["amount_residual"], [],
+    )
+    overdue_amount = (overdue_group[0]["amount_residual"] or 0) if overdue_group else 0
+
+    # Total invoiced in period
+    invoiced_group = _safe_read_group(
+        client, "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("invoice_date", ">=", start)],
+        ["amount_total"], [],
+    )
+    total_invoiced = (invoiced_group[0]["amount_total"] or 0) if invoiced_group else 0
+
+    collection_rate = round((collected / total_invoiced * 100), 1) if total_invoiced > 0 else 0
+
+    # Top pending invoices
+    top_pending = client.search_read(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0)],
+        fields=["name", "partner_id", "amount_residual", "invoice_date_due"],
+        limit=10, order="amount_residual desc",
+    )
+    top_pending_list = []
+    for inv in top_pending:
+        top_pending_list.append({
+            "invoice": inv["name"],
+            "partner": inv["partner_id"][1] if inv["partner_id"] else None,
+            "amount": inv["amount_residual"],
+            "due_date": str(inv.get("invoice_date_due") or ""),
+        })
+
+    return json.dumps({
+        "period": period,
+        "period_start": start,
+        "collected": collected,
+        "expected_7d": expected_7d,
+        "overdue_amount": overdue_amount,
+        "total_invoiced": total_invoiced,
+        "collection_rate_pct": collection_rate,
+        "top_pending": top_pending_list,
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_hunter_today(section: str = "all") -> str:
+    """Hunter daily dashboard. Sections: overview, sla, quotes, first_orders, sources.
+    Use section param for /hunter_today, /hunter_quotes, /hunter_first_orders, /hunter_sources.
+
+    Args:
+        section: 'all', 'overview', 'sla', 'quotes', 'first_orders', 'sources' (default 'all')
+    """
+    client = get_client()
+    teams = _get_team_ids()
+    d = _date_helpers()
+    today = d["today"]
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+    team_domain = []
+    so_team_domain = []
+    if teams.get("hunter"):
+        team_domain = [("team_id", "=", teams["hunter"])]
+        so_team_domain = [("team_id", "=", teams["hunter"])]
+
+    result = {"date": today, "section": section}
+
+    if section in ("all", "overview"):
+        leads_today = client.search_count(
+            "crm.lead", team_domain + [("create_date", ">=", today), ("create_date", "<", tomorrow)],
+        )
+        activities_today = client.search_count(
+            "crm.lead", team_domain + [("activity_date_deadline", "=", today)],
+        )
+        result["overview"] = {
+            "leads_created_today": leads_today,
+            "activities_due_today": activities_today,
+        }
+
+    if section in ("all", "sla"):
+        sla_cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+        sla_breached = client.search_count(
+            "crm.lead",
+            team_domain + [("type", "=", "opportunity"), ("active", "=", True),
+                           ("stage_id.is_won", "=", False), ("create_date", "<", sla_cutoff)],
+        )
+        sla_ok = client.search_count(
+            "crm.lead",
+            team_domain + [("type", "=", "opportunity"), ("active", "=", True),
+                           ("stage_id.is_won", "=", False), ("create_date", ">=", sla_cutoff)],
+        )
+        result["sla"] = {"ok": sla_ok, "breached": sla_breached}
+
+    if section in ("all", "quotes"):
+        quotes = client.search_read(
+            "sale.order",
+            so_team_domain + [("state", "in", ("draft", "sent"))],
+            fields=["name", "partner_id", "amount_total", "state", "create_date"],
+            limit=20, order="create_date desc",
+        )
+        result["quotes"] = {
+            "count": len(quotes),
+            "records": [{
+                "name": q["name"],
+                "partner": q["partner_id"][1] if q["partner_id"] else None,
+                "amount": q["amount_total"],
+                "state": q["state"],
+            } for q in quotes],
+        }
+
+    if section in ("all", "first_orders"):
+        fo_domain = so_team_domain + [
+            ("state", "in", ("sale", "done")),
+            ("date_order", ">=", today), ("date_order", "<", tomorrow),
+        ]
+        has_cc = _check_cc_field(client, "order_type")
+        if has_cc:
+            fo_domain.append(("order_type", "=", "first_order"))
+        fo_group = _safe_read_group(client, "sale.order", fo_domain, ["amount_total"], [])
+        fo_count = (fo_group[0].get("__count", 0)) if fo_group else 0
+        fo_revenue = (fo_group[0]["amount_total"] or 0) if fo_group else 0
+        result["first_orders"] = {"count": fo_count, "revenue": fo_revenue}
+
+    if section in ("all", "sources"):
+        # Lead sources (grouped by source_id)
+        source_groups = _safe_read_group(
+            client, "crm.lead",
+            team_domain + [("create_date", ">=", d["first_of_month"])],
+            ["source_id"], ["source_id"],
+        )
+        result["sources"] = [{
+            "source": g["source_id"][1] if g.get("source_id") else "Unknown",
+            "count": g.get("__count", g.get("source_id_count", 0)),
+        } for g in source_groups]
+
+    return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_hunter_sla_details(status: str = "breached", limit: int = 20) -> str:
+    """Record-level SLA detail: leads with SLA issues, showing hours_since_creation.
+
+    Args:
+        status: 'breached' (open > 48h) or 'ok' (open <= 48h) (default 'breached')
+        limit: Max records (default 20, max 200)
+    """
+    client = get_client()
+    limit = min(limit, 200)
+    teams = _get_team_ids()
+    sla_cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+
+    team_domain = []
+    if teams.get("hunter"):
+        team_domain = [("team_id", "=", teams["hunter"])]
+
+    base = team_domain + [
+        ("type", "=", "opportunity"), ("active", "=", True),
+        ("stage_id.is_won", "=", False),
+    ]
+    if status == "breached":
+        domain = base + [("create_date", "<", sla_cutoff)]
+        order = "create_date asc"
+    else:
+        domain = base + [("create_date", ">=", sla_cutoff)]
+        order = "create_date desc"
+
+    leads = client.search_read(
+        "crm.lead", domain,
+        fields=["name", "partner_id", "user_id", "stage_id", "create_date",
+                "expected_revenue", "priority", "activity_date_deadline"],
+        limit=limit, order=order,
+    )
+
+    now = datetime.now()
+    records = []
+    for lead in leads:
+        created = datetime.fromisoformat(str(lead["create_date"]))
+        hours = round((now - created).total_seconds() / 3600, 1)
+        records.append({
+            "id": lead["id"],
+            "name": lead["name"],
+            "partner": lead["partner_id"][1] if lead["partner_id"] else None,
+            "owner": lead["user_id"][1] if lead["user_id"] else None,
+            "stage": lead["stage_id"][1] if lead["stage_id"] else None,
+            "hours_since_creation": hours,
+            "expected_revenue": lead.get("expected_revenue", 0),
+            "priority": lead.get("priority", "0"),
+            "next_activity": str(lead.get("activity_date_deadline") or ""),
+        })
+
+    return json.dumps({
+        "status_filter": status,
+        "sla_threshold_hours": 48,
+        "count": len(records),
+        "records": records,
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_farmer_today(section: str = "all") -> str:
+    """Farmer daily dashboard. Sections: overview, reorder, sleeping, vip, retention.
+    Use for /farmer_today, /farmer_reorder, /farmer_sleeping, /farmer_vip, /farmer_retention.
+
+    Args:
+        section: 'all', 'overview', 'reorder', 'sleeping', 'vip', 'retention' (default 'all')
+    """
+    client = get_client()
+    teams = _get_team_ids()
+    d = _date_helpers()
+    today = d["today"]
+    today_date = date.today()
+
+    result = {"date": today, "section": section}
+
+    # Get customer base
+    customers = client.search_read(
+        "res.partner",
+        [("customer_rank", ">", 0)],
+        fields=["id", "name", "customer_rank"],
+        limit=200, order="customer_rank desc",
+    )
+    cust_ids = [c["id"] for c in customers]
+    cust_map = {c["id"]: c["name"] for c in customers}
+
+    # Get last order per customer
+    last_order = {}
+    if cust_ids:
+        orders = client.search_read(
+            "sale.order",
+            [("partner_id", "in", cust_ids), ("state", "in", ("sale", "done"))],
+            fields=["partner_id", "date_order"],
+            limit=200, order="date_order desc",
+        )
+        for o in orders:
+            pid = o["partner_id"][0] if o["partner_id"] else None
+            if pid and pid not in last_order:
+                last_order[pid] = str(o["date_order"])[:10]
+
+    if section in ("all", "overview"):
+        so_domain = [("state", "in", ("sale", "done")),
+                     ("date_order", ">=", today),
+                     ("date_order", "<", (today_date + timedelta(days=1)).isoformat())]
+        if teams.get("farmer"):
+            so_domain.append(("team_id", "=", teams["farmer"]))
+        day_group = _safe_read_group(client, "sale.order", so_domain, ["amount_total"], [])
+        day_count = (day_group[0].get("__count", 0)) if day_group else 0
+        day_rev = (day_group[0]["amount_total"] or 0) if day_group else 0
+        result["overview"] = {
+            "orders_today": day_count,
+            "revenue_today": day_rev,
+            "total_customers": len(cust_ids),
+        }
+
+    if section in ("all", "reorder"):
+        # Customers due for reorder (last order 25-35 days ago — typical monthly cycle)
+        reorder_start = (today_date - timedelta(days=35)).isoformat()
+        reorder_end = (today_date - timedelta(days=25)).isoformat()
+        reorder_due = []
+        for cid in cust_ids:
+            lo = last_order.get(cid)
+            if lo and reorder_end >= lo >= reorder_start:
+                reorder_due.append({"id": cid, "name": cust_map[cid], "last_order": lo})
+        result["reorder_due"] = {
+            "count": len(reorder_due),
+            "customers": reorder_due[:20],
+        }
+
+    if section in ("all", "sleeping"):
+        buckets = {"30_60d": [], "60_90d": [], "90d_plus": []}
+        for cid in cust_ids:
+            lo = last_order.get(cid)
+            if not lo:
+                buckets["90d_plus"].append({"id": cid, "name": cust_map[cid], "last_order": None})
+                continue
+            days_since = (today_date - date.fromisoformat(lo)).days
+            entry = {"id": cid, "name": cust_map[cid], "last_order": lo, "days_since": days_since}
+            if days_since >= 90:
+                buckets["90d_plus"].append(entry)
+            elif days_since >= 60:
+                buckets["60_90d"].append(entry)
+            elif days_since >= 30:
+                buckets["30_60d"].append(entry)
+        result["sleeping"] = {
+            "30_60d": {"count": len(buckets["30_60d"]), "customers": buckets["30_60d"][:10]},
+            "60_90d": {"count": len(buckets["60_90d"]), "customers": buckets["60_90d"][:10]},
+            "90d_plus": {"count": len(buckets["90d_plus"]), "customers": buckets["90d_plus"][:10]},
+        }
+
+    if section in ("all", "vip"):
+        # VIP = top customers by rank, check if sleeping
+        vip_customers = customers[:20]  # Already sorted by rank desc
+        vip_at_risk = []
+        for c in vip_customers:
+            lo = last_order.get(c["id"])
+            if not lo or (today_date - date.fromisoformat(lo)).days >= 60:
+                vip_at_risk.append({
+                    "id": c["id"], "name": c["name"],
+                    "last_order": lo,
+                    "days_since": (today_date - date.fromisoformat(lo)).days if lo else None,
+                })
+        result["vip_at_risk"] = {"count": len(vip_at_risk), "customers": vip_at_risk[:10]}
+
+    if section in ("all", "retention"):
+        # Retention: active vs sleeping ratio
+        active = sum(1 for cid in cust_ids
+                     if cid in last_order and (today_date - date.fromisoformat(last_order[cid])).days < 30)
+        total = len(cust_ids)
+        result["retention"] = {
+            "active_customers": active,
+            "total_customers": total,
+            "retention_rate_pct": round((active / total * 100), 1) if total > 0 else 0,
+        }
+
+    return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_farmer_ar(limit: int = 20) -> str:
+    """Farmer-scoped AR: total, aging buckets, top debtors.
+    Filters by farmer team or hunter_farmer_type=farmer if available.
+
+    Args:
+        limit: Max debtor records (default 20, max 200)
+    """
+    client = get_client()
+    limit = min(limit, 200)
+    today_date = date.today()
+    today = today_date.isoformat()
+
+    # Build domain for farmer invoices
+    base_domain = [("move_type", "=", "out_invoice"), ("state", "=", "posted"), ("amount_residual", ">", 0)]
+    teams = _get_team_ids()
+    if teams.get("farmer"):
+        base_domain.append(("team_id", "=", teams["farmer"]))
+
+    # Total
+    total_group = _safe_read_group(client, "account.move", base_domain, ["amount_residual"], [])
+    total = (total_group[0]["amount_residual"] or 0) if total_group else 0
+
+    # Get invoices for aging
+    invoices = client.search_read(
+        "account.move", base_domain,
+        fields=["name", "partner_id", "amount_residual", "invoice_date_due"],
+        limit=200, order="amount_residual desc",
+    )
+
+    buckets = {"current": 0, "1_30": 0, "31_60": 0, "61_90": 0, "90_plus": 0}
+    for inv in invoices:
+        due = inv.get("invoice_date_due")
+        amt = inv["amount_residual"]
+        if not due:
+            buckets["current"] += amt
+            continue
+        days_past = (today_date - date.fromisoformat(str(due)[:10])).days
+        if days_past <= 0:
+            buckets["current"] += amt
+        elif days_past <= 30:
+            buckets["1_30"] += amt
+        elif days_past <= 60:
+            buckets["31_60"] += amt
+        elif days_past <= 90:
+            buckets["61_90"] += amt
+        else:
+            buckets["90_plus"] += amt
+
+    # Top debtors
+    partner_totals: dict[str, float] = {}
+    for inv in invoices:
+        pname = inv["partner_id"][1] if inv["partner_id"] else "Unknown"
+        partner_totals[pname] = partner_totals.get(pname, 0) + inv["amount_residual"]
+    top_debtors = sorted(partner_totals.items(), key=lambda x: x[1], reverse=True)[:limit]
+
+    return json.dumps({
+        "scope": "farmer",
+        "total_receivable": total,
+        "aging_buckets": buckets,
+        "top_debtors": [{"partner": p, "amount": a} for p, a in top_debtors],
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_congno(mode: str = "overdue", limit: int = 20) -> str:
+    """Invoice collection list. mode=due_soon: invoices due within 7 days.
+    mode=overdue: invoices past due. Each with dispute and collection status if available.
+
+    Args:
+        mode: 'due_soon' (due within 7d) or 'overdue' (past due) (default 'overdue')
+        limit: Max records (default 20, max 200)
+    """
+    client = get_client()
+    limit = min(limit, 200)
+    today_date = date.today()
+    today = today_date.isoformat()
+
+    base_domain = [("move_type", "=", "out_invoice"), ("state", "=", "posted"), ("amount_residual", ">", 0)]
+
+    if mode == "due_soon":
+        due_7d = (today_date + timedelta(days=7)).isoformat()
+        domain = base_domain + [("invoice_date_due", ">=", today), ("invoice_date_due", "<=", due_7d)]
+        order = "invoice_date_due asc"
+    else:  # overdue
+        domain = base_domain + [("invoice_date_due", "<", today)]
+        order = "invoice_date_due asc"
+
+    fields = ["name", "partner_id", "amount_total", "amount_residual",
+              "invoice_date", "invoice_date_due", "payment_state"]
+
+    invoices = client.search_read(
+        "account.move", domain,
+        fields=fields,
+        limit=limit, order=order,
+    )
+
+    records = []
+    for inv in invoices:
+        due = inv.get("invoice_date_due")
+        days_info = 0
+        if due:
+            due_date = date.fromisoformat(str(due)[:10])
+            days_info = (today_date - due_date).days
+        records.append({
+            "id": inv["id"],
+            "invoice": inv["name"],
+            "partner": inv["partner_id"][1] if inv["partner_id"] else None,
+            "amount_total": inv["amount_total"],
+            "amount_residual": inv["amount_residual"],
+            "invoice_date": str(inv.get("invoice_date") or ""),
+            "due_date": str(due or ""),
+            "days_overdue": days_info if mode == "overdue" else None,
+            "days_until_due": -days_info if mode == "due_soon" else None,
+            "payment_state": inv.get("payment_state", ""),
+        })
+
+    # Summary
+    total_amount = sum(r["amount_residual"] for r in records)
+
+    return json.dumps({
+        "mode": mode,
+        "count": len(records),
+        "total_amount": total_amount,
+        "records": records,
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_task_overdue(team_filter: str = "", limit: int = 20) -> str:
+    """Overdue tasks grouped by category and impact. Requires project module.
+
+    Args:
+        team_filter: 'hunter', 'farmer', or '' for all (default '')
+        limit: Max records (default 20, max 200)
+    """
+    client = get_client()
+    limit = min(limit, 200)
+    today = _date_helpers()["today"]
+
+    try:
+        domain = [("date_deadline", "<", today), ("stage_id.fold", "=", False)]
+
+        # Team filter by project name mapping
+        if team_filter:
+            # Filter by projects that contain the team name
+            projects = client.search_read(
+                "project.project",
+                [("name", "ilike", team_filter)],
+                fields=["id"],
+                limit=50,
+            )
+            if projects:
+                domain.append(("project_id", "in", [p["id"] for p in projects]))
+
+        tasks = client.search_read(
+            "project.task", domain,
+            fields=["name", "user_ids", "date_deadline", "project_id",
+                    "priority", "stage_id", "tag_ids"],
+            limit=limit, order="date_deadline asc",
+        )
+    except xmlrpc.client.Fault as e:
+        if "project.task" in str(e.faultString):
+            return json.dumps({"error": "Project module not installed. Cannot fetch tasks."})
+        raise
+
+    today_date = date.today()
+    records = []
+    by_priority = {"3": 0, "2": 0, "1": 0, "0": 0}
+    for task in tasks:
+        dl = task.get("date_deadline")
+        days_overdue = (today_date - date.fromisoformat(str(dl)[:10])).days if dl else 0
+        priority = task.get("priority", "0")
+        by_priority[priority] = by_priority.get(priority, 0) + 1
+        records.append({
+            "id": task["id"],
+            "name": task["name"],
+            "project": task["project_id"][1] if task["project_id"] else None,
+            "stage": task["stage_id"][1] if task["stage_id"] else None,
+            "priority": priority,
+            "date_deadline": str(dl or ""),
+            "days_overdue": days_overdue,
+        })
+
+    return json.dumps({
+        "team_filter": team_filter or "all",
+        "total_overdue": len(records),
+        "by_priority": by_priority,
+        "records": records,
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_flash_report(report_type: str = "midday") -> str:
+    """Compact flash report: revenue today, leads, orders, collections, open issues, tasks.
+    EOD report adds delta_vs_yesterday.
+
+    Args:
+        report_type: 'midday' or 'eod' (default 'midday')
+    """
+    client = get_client()
+    d = _date_helpers()
+    today = d["today"]
+    today_date = date.today()
+    tomorrow = (today_date + timedelta(days=1)).isoformat()
+    yesterday = d["yesterday"]
+
+    # Revenue today
+    rev_group = _safe_read_group(
+        client, "sale.order",
+        [("state", "in", ("sale", "done")),
+         ("date_order", ">=", today), ("date_order", "<", tomorrow)],
+        ["amount_total"], [],
+    )
+    revenue_today = (rev_group[0]["amount_total"] or 0) if rev_group else 0
+    orders_today = (rev_group[0].get("__count", 0)) if rev_group else 0
+
+    # Leads today
+    leads_today = client.search_count(
+        "crm.lead", [("create_date", ">=", today), ("create_date", "<", tomorrow)],
+    )
+
+    # Collections today (payments)
+    coll_group = _safe_read_group(
+        client, "account.payment",
+        [("payment_type", "=", "inbound"), ("state", "=", "posted"),
+         ("date", ">=", today), ("date", "<", tomorrow)],
+        ["amount"], [],
+    )
+    collections_today = (coll_group[0]["amount"] or 0) if coll_group else 0
+
+    # Open issues: overdue invoices + SLA breached leads
+    overdue_inv = client.search_count(
+        "account.move",
+        [("move_type", "=", "out_invoice"), ("state", "=", "posted"),
+         ("amount_residual", ">", 0), ("invoice_date_due", "<", today)],
+    )
+    sla_cutoff = (datetime.now() - timedelta(hours=48)).isoformat()
+    sla_breached = client.search_count(
+        "crm.lead",
+        [("type", "=", "opportunity"), ("active", "=", True),
+         ("stage_id.is_won", "=", False), ("create_date", "<", sla_cutoff)],
+    )
+
+    # Overdue tasks
+    overdue_tasks = 0
+    try:
+        overdue_tasks = client.search_count(
+            "project.task",
+            [("date_deadline", "<", today), ("stage_id.fold", "=", False)],
+        )
+    except Exception:
+        pass
+
+    result = {
+        "report_type": report_type,
+        "date": today,
+        "revenue_today": revenue_today,
+        "orders_today": orders_today,
+        "leads_today": leads_today,
+        "collections_today": collections_today,
+        "open_issues": {
+            "overdue_invoices": overdue_inv,
+            "sla_breached_leads": sla_breached,
+            "overdue_tasks": overdue_tasks,
+        },
+    }
+
+    # EOD: add delta vs yesterday
+    if report_type == "eod":
+        yesterday_end = today
+        rev_yday = _safe_read_group(
+            client, "sale.order",
+            [("state", "in", ("sale", "done")),
+             ("date_order", ">=", yesterday), ("date_order", "<", yesterday_end)],
+            ["amount_total"], [],
+        )
+        rev_yesterday = (rev_yday[0]["amount_total"] or 0) if rev_yday else 0
+        leads_yesterday = client.search_count(
+            "crm.lead",
+            [("create_date", ">=", yesterday), ("create_date", "<", yesterday_end)],
+        )
+        coll_yday = _safe_read_group(
+            client, "account.payment",
+            [("payment_type", "=", "inbound"), ("state", "=", "posted"),
+             ("date", ">=", yesterday), ("date", "<", yesterday_end)],
+            ["amount"], [],
+        )
+        coll_yesterday = (coll_yday[0]["amount"] or 0) if coll_yday else 0
+
+        result["delta_vs_yesterday"] = {
+            "revenue": revenue_today - rev_yesterday,
+            "leads": leads_today - leads_yesterday,
+            "collections": collections_today - coll_yesterday,
+        }
+
+    return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
 # ---------------------------------------------------------------------------

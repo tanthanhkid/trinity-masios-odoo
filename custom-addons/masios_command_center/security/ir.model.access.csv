@@ -1,0 +1,16 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_res_partner_cc_user,res.partner.command.center.user,base.model_res_partner,sales_team.group_sale_salesman,1,0,0,0
+access_res_partner_cc_manager,res.partner.command.center.manager,base.model_res_partner,sales_team.group_sale_manager,1,1,1,0
+access_res_partner_cc_admin,res.partner.command.center.admin,base.model_res_partner,base.group_system,1,1,1,1
+access_sale_order_cc_user,sale.order.command.center.user,sale.model_sale_order,sales_team.group_sale_salesman,1,0,0,0
+access_sale_order_cc_manager,sale.order.command.center.manager,sale.model_sale_order,sales_team.group_sale_manager,1,1,1,0
+access_sale_order_cc_admin,sale.order.command.center.admin,sale.model_sale_order,base.group_system,1,1,1,1
+access_crm_lead_cc_user,crm.lead.command.center.user,crm.model_crm_lead,sales_team.group_sale_salesman,1,0,0,0
+access_crm_lead_cc_manager,crm.lead.command.center.manager,crm.model_crm_lead,sales_team.group_sale_manager,1,1,1,0
+access_crm_lead_cc_admin,crm.lead.command.center.admin,crm.model_crm_lead,base.group_system,1,1,1,1
+access_account_move_cc_user,account.move.command.center.user,account.model_account_move,sales_team.group_sale_salesman,1,0,0,0
+access_account_move_cc_manager,account.move.command.center.manager,account.model_account_move,sales_team.group_sale_manager,1,1,1,0
+access_account_move_cc_admin,account.move.command.center.admin,account.model_account_move,base.group_system,1,1,1,1
+access_project_task_cc_user,project.task.command.center.user,project.model_project_task,sales_team.group_sale_salesman,1,0,0,0
+access_project_task_cc_manager,project.task.command.center.manager,project.model_project_task,sales_team.group_sale_manager,1,1,1,0
+access_project_task_cc_admin,project.task.command.center.admin,project.model_project_task,base.group_system,1,1,1,1
