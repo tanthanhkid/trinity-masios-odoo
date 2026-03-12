@@ -77,15 +77,15 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - **stdio** (Claude Code): `.mcp.json` → `uv run` → local process (no token needed)
 - **HTTP** (OpenClaw remote): `http://server:8200/sse` → mcporter connects (bearer token required)
 
-## Mac Deploy Machine (OpenClaw Docker Host)
+## Mac Deploy Machine (OpenClaw Host)
 - **IP**: 100.81.203.48 (Tailscale)
 - **User**: masios
 - **Password**: (stored in memory/server-config.md)
 - **OS**: macOS 26.3, Apple Silicon (ARM64), Mac Studio
 - **Docker**: OrbStack v2.0.5, Docker 29.2.0
 - **Deploy paths**:
-  - Bot 1: `~/openclaw-odoo/` (port 18789) — Telegram bot `@hdxthanhtt4bot`
-  - Bot 2: `~/openclaw-odoo-2/` (port 18790) — Telegram bot `@MASIBIO_bot`
+  - Bot 1: `~/openclaw-odoo/` (port 18789) — Telegram `@hdxthanhtt4bot` (Docker, connected to Odoo)
+  - Bot 2: `~/openclaw-bot2-native/` (port 18790) — Telegram `@MASIBIO_bot` (native macOS, **disconnected from Odoo** — clean OpenClaw instance, no Odoo skills/MCP)
 - **Telegram whitelist**: `2048339435` (CEO), `1481072032`
 
 ## MCP Tools (26 total)

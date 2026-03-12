@@ -66,11 +66,21 @@ def load_config() -> dict:
 # ---------------------------------------------------------------------------
 
 def _odoo_error(func):
-    """Decorator: catch XML-RPC and connection errors, return structured JSON."""
-    def wrapper(*args, **kwargs):
+    """Decorator: catch XML-RPC errors and run sync tools off the event loop.
+
+    FastMCP + anyio runs sync tool functions inline on the event loop,
+    blocking uvicorn from handling SSE responses while XML-RPC calls are
+    in progress.  We wrap every tool with ``anyio.to_thread.run_sync``
+    so the blocking work happens in a worker thread.
+    """
+    import functools
+
+    def _sync_call(*args, **kwargs):
         logger.info(f"tool={func.__name__} called")
         try:
-            return func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            logger.info(f"tool={func.__name__} completed")
+            return result
         except xmlrpc.client.Fault as e:
             msg = e.faultString
             if "\n" in msg:
@@ -89,9 +99,12 @@ def _odoo_error(func):
         except ValueError as e:
             logger.error(f"tool={func.__name__} value error: {e}")
             return json.dumps({"error": str(e)})
-    wrapper.__name__ = func.__name__
-    wrapper.__doc__ = func.__doc__
-    wrapper.__wrapped__ = func
+
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        import anyio
+        return await anyio.to_thread.run_sync(lambda: _sync_call(*args, **kwargs))
+
     return wrapper
 
 
@@ -159,7 +172,7 @@ class OdooClient:
         self.username = username
         self.password = password
         self._uid = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         transport = _make_timeout_transport(self.url, timeout=30)
         self._common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common", transport=transport)
         self._object = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/object", transport=transport)
@@ -3218,8 +3231,12 @@ def _generate_token() -> str:
 
 
 def _create_authed_app(app, api_token: str):
-    """Wrap a Starlette app with bearer token authentication middleware."""
-    from starlette.requests import Request
+    """Wrap a Starlette app with bearer token authentication middleware.
+
+    Only checks auth on POST /messages requests (the command channel).
+    GET /sse (the SSE event stream) is left unblocked so the long-lived
+    connection doesn't interfere with response delivery.
+    """
     from starlette.responses import JSONResponse
     from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -3229,24 +3246,37 @@ def _create_authed_app(app, api_token: str):
             self.token = token
 
         async def __call__(self, scope: Scope, receive: Receive, send: Send):
-            if scope["type"] in ("http", "websocket"):
-                request = Request(scope)
-                auth_header = request.headers.get("authorization", "")
-                if not auth_header.startswith("Bearer "):
-                    response = JSONResponse(
-                        {"error": "Missing Authorization header. Use: Bearer <token>"},
-                        status_code=401,
-                    )
-                    await response(scope, receive, send)
-                    return
-                provided_token = auth_header[7:]  # strip "Bearer "
-                if not hmac.compare_digest(provided_token, self.token):
-                    response = JSONResponse(
-                        {"error": "Invalid API token"},
-                        status_code=403,
-                    )
-                    await response(scope, receive, send)
-                    return
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            # Only enforce auth on POST requests (messages endpoint)
+            method = scope.get("method", "GET")
+            if method != "POST":
+                await self.app(scope, receive, send)
+                return
+
+            # Extract Authorization header from ASGI scope
+            auth_header = ""
+            for header_name, header_value in scope.get("headers", []):
+                if header_name == b"authorization":
+                    auth_header = header_value.decode("latin-1")
+                    break
+            if not auth_header.startswith("Bearer "):
+                response = JSONResponse(
+                    {"error": "Missing Authorization header. Use: Bearer <token>"},
+                    status_code=401,
+                )
+                await response(scope, receive, send)
+                return
+            provided_token = auth_header[7:]
+            if not hmac.compare_digest(provided_token, self.token):
+                response = JSONResponse(
+                    {"error": "Invalid API token"},
+                    status_code=403,
+                )
+                await response(scope, receive, send)
+                return
             await self.app(scope, receive, send)
 
     return BearerTokenMiddleware(app, api_token)
@@ -3291,7 +3321,17 @@ if __name__ == "__main__":
             app = mcp.sse_app()
             authed_app = _create_authed_app(app, api_token)
             print(f"Starting Odoo MCP Server on {cli_args.host}:{cli_args.port} (SSE, token auth enabled)")
-            uvicorn.run(authed_app, host=cli_args.host, port=cli_args.port)
+            uvicorn.run(
+                authed_app,
+                host=cli_args.host,
+                port=cli_args.port,
+                timeout_keep_alive=30,
+                limit_concurrency=50,
+                backlog=128,
+                ws_ping_interval=20,
+                ws_ping_timeout=10,
+                h11_max_incomplete_event_size=64 * 1024,
+            )
         else:
             mcp.run(transport="sse")
     else:
