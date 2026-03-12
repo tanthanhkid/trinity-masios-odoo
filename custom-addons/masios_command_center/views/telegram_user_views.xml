@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ==================== TelegramUser Views ==================== -->
+
+    <record id="view_telegram_user_tree" model="ir.ui.view">
+        <field name="name">masios.telegram_user.tree</field>
+        <field name="model">masios.telegram_user</field>
+        <field name="arch" type="xml">
+            <list default_group_by="role_id">
+                <field name="name"/>
+                <field name="telegram_id"/>
+                <field name="telegram_username"/>
+                <field name="role_id"/>
+                <field name="active" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_telegram_user_form" model="ir.ui.view">
+        <field name="name">masios.telegram_user.form</field>
+        <field name="model">masios.telegram_user</field>
+        <field name="arch" type="xml">
+            <form>
+                <header/>
+                <sheet>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger"
+                            invisible="active"/>
+                    <group>
+                        <group string="Thông tin cơ bản">
+                            <field name="name"/>
+                            <field name="telegram_id"/>
+                            <field name="telegram_username"/>
+                        </group>
+                        <group string="Cấu hình">
+                            <field name="role_id"/>
+                            <field name="odoo_user_id"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Quyền bổ sung" name="permissions">
+                            <group>
+                                <field name="extra_commands" placeholder="Mỗi command 1 dòng..."/>
+                                <field name="blocked_commands" placeholder="Mỗi command 1 dòng..."/>
+                            </group>
+                        </page>
+                        <page string="Ghi chú" name="notes">
+                            <field name="notes" placeholder="Ghi chú thêm..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_telegram_user_search" model="ir.ui.view">
+        <field name="name">masios.telegram_user.search</field>
+        <field name="model">masios.telegram_user</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="telegram_id"/>
+                <field name="telegram_username"/>
+                <field name="role_id"/>
+                <filter name="active" string="Hoạt động" domain="[('active', '=', True)]"/>
+                <filter name="inactive" string="Đã lưu trữ" domain="[('active', '=', False)]"/>
+                <separator/>
+                <group expand="0" string="Nhóm theo">
+                    <filter name="group_role" string="Vai trò" context="{'group_by': 'role_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ==================== TelegramRole Views ==================== -->
+
+    <record id="view_telegram_role_tree" model="ir.ui.view">
+        <field name="name">masios.telegram_role.tree</field>
+        <field name="model">masios.telegram_role</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="view_scope"/>
+                <field name="user_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_telegram_role_form" model="ir.ui.view">
+        <field name="name">masios.telegram_role.form</field>
+        <field name="model">masios.telegram_role</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group string="Thông tin vai trò">
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="sequence"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                        <group string="Phạm vi">
+                            <field name="view_scope"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Commands" name="commands">
+                            <field name="allowed_commands"
+                                   placeholder="Mỗi command 1 dòng, * = tất cả&#10;vd:&#10;morning_brief&#10;hunter_today"/>
+                        </page>
+                        <page string="Actions" name="actions">
+                            <field name="allowed_actions"
+                                   placeholder="Mỗi action 1 dòng, * = tất cả&#10;vd:&#10;da_lien_he&#10;doi_owner"/>
+                        </page>
+                        <page string="Mô tả" name="description">
+                            <field name="description" placeholder="Mô tả vai trò..."/>
+                        </page>
+                        <page string="Người dùng" name="users">
+                            <field name="user_ids">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="telegram_id"/>
+                                    <field name="telegram_username"/>
+                                    <field name="active"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ==================== Actions ==================== -->
+
+    <record id="action_telegram_users" model="ir.actions.act_window">
+        <field name="name">Người dùng Telegram</field>
+        <field name="res_model">masios.telegram_user</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Thêm người dùng Telegram
+            </p>
+            <p>Quản lý quyền truy cập Command Center cho từng người dùng Telegram.</p>
+        </field>
+    </record>
+
+    <record id="action_telegram_roles" model="ir.actions.act_window">
+        <field name="name">Vai trò Telegram</field>
+        <field name="res_model">masios.telegram_role</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Tạo vai trò mới
+            </p>
+            <p>Vai trò xác định quyền truy cập slash commands và actions trong Telegram bot.</p>
+        </field>
+    </record>
+
+    <!-- ==================== Menus ==================== -->
+
+    <menuitem id="menu_command_center_root"
+              name="Command Center"
+              sequence="100"/>
+
+    <menuitem id="menu_telegram_config"
+              name="Telegram"
+              parent="menu_command_center_root"
+              sequence="10"/>
+
+    <menuitem id="menu_telegram_users"
+              name="Người dùng Telegram"
+              parent="menu_telegram_config"
+              action="action_telegram_users"
+              sequence="10"/>
+
+    <menuitem id="menu_telegram_roles"
+              name="Vai trò"
+              parent="menu_telegram_config"
+              action="action_telegram_roles"
+              sequence="20"/>
+
+</odoo>

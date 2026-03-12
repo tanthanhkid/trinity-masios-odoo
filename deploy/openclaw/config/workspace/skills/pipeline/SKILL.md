@@ -8,6 +8,12 @@ metadata:
 
 # Xem Pipeline CRM
 
+## Bước 0: Kiểm tra quyền
+1. Lấy telegram_id từ session
+2. Gọi: `mcporter call odoo.odoo_telegram_check_permission telegram_id="<ID>" command="pipeline"`
+3. Nếu allowed=false → hiển thị "🚫 {reason}" và DỪNG
+4. Nếu allowed=true → tiếp tục các bước bên dưới
+
 ## Workflow
 1. Chạy ngay 2 lệnh — KHÔNG hỏi gì thêm
 2. Format kết quả: pipeline theo stage + danh sách lead mới nhất

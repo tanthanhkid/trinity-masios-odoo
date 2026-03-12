@@ -1,0 +1,33 @@
+{
+  "roles": {
+    "2048339435": {"role": "ceo", "name": "CEO Minh Sang"},
+    "1481072032": {"role": "hunter_lead", "name": "Hunter Lead"}
+  },
+  "permissions": {
+    "ceo": {
+      "commands": ["*"],
+      "actions": ["*"],
+      "view_scope": "all"
+    },
+    "hunter_lead": {
+      "commands": ["masi", "morning_brief", "ceo_alert", "doanhso_homnay", "brief_hunter", "hunter_today", "hunter_sla", "hunter_quotes", "hunter_first_orders", "hunter_sources", "khachmoi_homnay", "kpi", "pipeline", "newlead", "newcustomer", "quote", "credit", "findcustomer", "midday", "eod"],
+      "actions": ["da_lien_he", "doi_owner", "escalate", "tao_task"],
+      "view_scope": "hunter"
+    },
+    "farmer_lead": {
+      "commands": ["masi", "morning_brief", "doanhso_homnay", "brief_farmer", "farmer_today", "farmer_reorder", "farmer_sleeping", "farmer_vip", "farmer_ar", "farmer_retention", "congno_denhan", "congno_quahan", "kpi", "pipeline", "newcustomer", "credit", "findcustomer", "midday", "eod"],
+      "actions": ["da_nhac_no", "gan_dispute", "doi_owner", "escalate", "tao_task"],
+      "view_scope": "farmer"
+    },
+    "finance": {
+      "commands": ["masi", "congno_denhan", "congno_quahan", "brief_ar", "brief_cash", "farmer_ar", "kpi", "invoice", "credit", "findcustomer"],
+      "actions": ["da_nhac_no", "gan_dispute", "escalate"],
+      "view_scope": "finance"
+    },
+    "ops": {
+      "commands": ["masi", "task_quahan", "midday", "eod", "hunter_today", "farmer_today", "doanhso_homnay", "kpi", "pipeline"],
+      "actions": ["xong", "doi_owner", "escalate", "tao_task"],
+      "view_scope": "ops"
+    }
+  }
+}

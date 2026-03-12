@@ -8,6 +8,12 @@ metadata:
 
 # Tạo Báo Giá
 
+## Bước 0: Kiểm tra quyền
+1. Lấy telegram_id từ session
+2. Gọi: `mcporter call odoo.odoo_telegram_check_permission telegram_id="<ID>" command="quote"`
+3. Nếu allowed=false → hiển thị "🚫 {reason}" và DỪNG
+4. Nếu allowed=true → tiếp tục các bước bên dưới
+
 ## Workflow
 1. Hỏi tên khách hàng → tìm trong hệ thống
 2. Liệt kê sản phẩm có sẵn → HỎI user chọn SP + số lượng (BẮT BUỘC)

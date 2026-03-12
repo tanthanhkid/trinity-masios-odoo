@@ -1336,13 +1336,23 @@ def odoo_morning_brief() -> str:
             "record": f"account.move,{inv['id']}",
         })
 
-    return json.dumps({
+    # Data quality checks
+    data_issues = []
+    if not teams.get("hunter"):
+        data_issues.append("Team Hunter chưa được cấu hình trong CRM")
+    if not teams.get("farmer"):
+        data_issues.append("Team Farmer chưa được cấu hình trong CRM")
+
+    result = {
         "date": today,
         "hunter_kpis": hunter_kpis,
         "farmer_kpis": farmer_kpis,
         "ar_task_summary": ar_task_summary,
         "top_alerts": alerts[:10],
-    }, indent=2, ensure_ascii=False, default=str)
+        "data_quality": "issue" if data_issues else "ok",
+        "data_issues": data_issues,
+    }
+    return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
@@ -1508,6 +1518,16 @@ def odoo_revenue_today(date_filter: str = "") -> str:
             "total_orders": count_total,
             "note": "order_type field not available — install masios_command_center for hunter/farmer split",
         }
+
+    # Data quality checks
+    teams = _get_team_ids()
+    data_issues = []
+    if not teams.get("hunter"):
+        data_issues.append("Team Hunter chưa được cấu hình trong CRM")
+    if not teams.get("farmer"):
+        data_issues.append("Team Farmer chưa được cấu hình trong CRM")
+    result["data_quality"] = "issue" if data_issues else "ok"
+    result["data_issues"] = data_issues
 
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
@@ -2260,12 +2280,20 @@ def odoo_congno(mode: str = "overdue", limit: int = 20) -> str:
     # Summary
     total_amount = sum(r["amount_residual"] for r in records)
 
-    return json.dumps({
+    # Data quality checks
+    data_issues = []
+    no_partner = [r for r in records if r["partner"] is None]
+    if no_partner:
+        data_issues.append(f"{len(no_partner)} hóa đơn không có khách hàng (partner)")
+    result = {
         "mode": mode,
         "count": len(records),
         "total_amount": total_amount,
         "records": records,
-    }, indent=2, ensure_ascii=False, default=str)
+        "data_quality": "issue" if data_issues else "ok",
+        "data_issues": data_issues,
+    }
+    return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
@@ -2439,6 +2467,745 @@ def odoo_flash_report(report_type: str = "midday") -> str:
         }
 
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Action Tools (7 tools)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@_odoo_error
+def odoo_mark_contacted(lead_id: int) -> str:
+    """Mark a CRM lead as contacted by setting first_touch_date to current datetime.
+
+    Args:
+        lead_id: CRM lead ID (crm.lead record)
+    """
+    client = get_client()
+    leads = client.search_read(
+        "crm.lead", [("id", "=", lead_id)],
+        fields=["name"],
+        limit=1,
+    )
+    if not leads:
+        raise ValueError(f"Lead {lead_id} not found")
+
+    now = datetime.now().isoformat()
+    client.write("crm.lead", [lead_id], {"first_touch_date": now})
+    return json.dumps({
+        "success": True,
+        "lead_id": lead_id,
+        "lead_name": leads[0]["name"],
+        "first_touch_date": now,
+        "message": f"Lead '{leads[0]['name']}' marked as contacted",
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_mark_collection(invoice_id: int, status: str) -> str:
+    """Set collection status on an invoice (account.move).
+
+    Args:
+        invoice_id: Invoice ID (account.move record)
+        status: Collection status: 'none', 'reminded', 'promised', 'collected'
+    """
+    valid_statuses = ("none", "reminded", "promised", "collected")
+    if status not in valid_statuses:
+        raise ValueError(f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}")
+
+    client = get_client()
+    invoices = client.search_read(
+        "account.move", [("id", "=", invoice_id)],
+        fields=["name"],
+        limit=1,
+    )
+    if not invoices:
+        raise ValueError(f"Invoice {invoice_id} not found")
+
+    client.write("account.move", [invoice_id], {"collection_status": status})
+    return json.dumps({
+        "success": True,
+        "invoice_id": invoice_id,
+        "invoice_name": invoices[0]["name"],
+        "collection_status": status,
+        "message": f"Invoice {invoices[0]['name']} collection status set to '{status}'",
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_set_dispute(invoice_id: int, note: str) -> str:
+    """Mark an invoice as disputed with a note.
+
+    Args:
+        invoice_id: Invoice ID (account.move record)
+        note: Dispute description/reason
+    """
+    client = get_client()
+    invoices = client.search_read(
+        "account.move", [("id", "=", invoice_id)],
+        fields=["name"],
+        limit=1,
+    )
+    if not invoices:
+        raise ValueError(f"Invoice {invoice_id} not found")
+
+    client.write("account.move", [invoice_id], {
+        "dispute_status": "disputed",
+        "dispute_note": note,
+    })
+    return json.dumps({
+        "success": True,
+        "invoice_id": invoice_id,
+        "invoice_name": invoices[0]["name"],
+        "dispute_status": "disputed",
+        "dispute_note": note,
+        "message": f"Invoice {invoices[0]['name']} marked as disputed",
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_change_owner(model: str, record_id: int, new_user_id: int) -> str:
+    """Change the owner (user_id or hunter_owner_id for crm.lead) on a record.
+
+    Args:
+        model: Model name (e.g. 'crm.lead', 'sale.order')
+        record_id: Record ID to update
+        new_user_id: New owner's user ID (res.users)
+    """
+    client = get_client()
+
+    # Validate new user exists
+    users = client.search_read(
+        "res.users", [("id", "=", new_user_id)],
+        fields=["name"],
+        limit=1,
+    )
+    if not users:
+        raise ValueError(f"User {new_user_id} not found")
+    new_user_name = users[0]["name"]
+
+    # Determine which field to use
+    owner_field = "user_id"
+    if model == "crm.lead":
+        # Check if hunter_owner_id exists
+        try:
+            fields = client.fields_get(model, attributes=["string", "type"])
+            if "hunter_owner_id" in fields:
+                owner_field = "hunter_owner_id"
+        except Exception:
+            pass
+
+    # Read current owner
+    records = client.search_read(
+        model, [("id", "=", record_id)],
+        fields=["name" if model != "account.move" else "name", owner_field],
+        limit=1,
+    )
+    if not records:
+        raise ValueError(f"{model} record {record_id} not found")
+
+    record = records[0]
+    old_owner = record.get(owner_field)
+    old_owner_name = old_owner[1] if isinstance(old_owner, (list, tuple)) and old_owner else "None"
+
+    # Update owner
+    client.write(model, [record_id], {owner_field: new_user_id})
+    return json.dumps({
+        "success": True,
+        "model": model,
+        "record_id": record_id,
+        "owner_field": owner_field,
+        "old_owner": old_owner_name,
+        "new_owner": new_user_name,
+        "message": f"Owner changed: {old_owner_name} → {new_user_name}",
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_escalate(model: str, record_id: int, note: str) -> str:
+    """Create an escalation task (project.task) linked to a record.
+
+    Args:
+        model: Source model (e.g. 'crm.lead', 'account.move')
+        record_id: Source record ID
+        note: Escalation description
+    """
+    client = get_client()
+
+    # Read source record for context
+    name_field = "name"
+    records = client.search_read(
+        model, [("id", "=", record_id)],
+        fields=[name_field, "partner_id"] if model != "res.partner" else [name_field],
+        limit=1,
+    )
+    if not records:
+        raise ValueError(f"{model} record {record_id} not found")
+
+    record = records[0]
+    record_name = record.get(name_field, str(record_id))
+    partner_id = None
+    if model == "res.partner":
+        partner_id = record_id
+    elif record.get("partner_id"):
+        partner_id = record["partner_id"][0] if isinstance(record["partner_id"], (list, tuple)) else record["partner_id"]
+
+    # Build task values
+    task_vals = {
+        "name": f"[Escalation] {model} #{record_id}: {record_name}",
+        "description": f"Escalation from {model} record {record_id} ({record_name})\n\n{note}",
+        "priority": "1",  # High priority
+    }
+
+    # Try to set command center fields if available
+    try:
+        task_fields = client.fields_get("project.task", attributes=["string", "type"])
+        if "task_category" in task_fields:
+            task_vals["task_category"] = "escalation"
+        if "impact_level" in task_fields:
+            task_vals["impact_level"] = "high"
+        if "source_alert_code" in task_fields:
+            task_vals["source_alert_code"] = f"{model},{record_id}"
+        if "related_partner_id" in task_fields and partner_id:
+            task_vals["related_partner_id"] = partner_id
+    except Exception:
+        pass
+
+    # Set partner_id on task if field exists
+    if partner_id:
+        try:
+            task_fields = task_fields if 'task_fields' in dir() else client.fields_get("project.task", attributes=["string", "type"])
+            if "partner_id" in task_fields:
+                task_vals["partner_id"] = partner_id
+        except Exception:
+            pass
+
+    task_id = client.create("project.task", task_vals)
+    return json.dumps({
+        "success": True,
+        "task_id": task_id,
+        "source_model": model,
+        "source_record_id": record_id,
+        "source_record_name": record_name,
+        "message": f"Escalation task #{task_id} created for {model} #{record_id}",
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_complete_task(task_id: int) -> str:
+    """Complete a task by moving it to the 'Done' stage.
+
+    Args:
+        task_id: Task ID (project.task record)
+    """
+    client = get_client()
+
+    # Read the task to get its project
+    tasks = client.search_read(
+        "project.task", [("id", "=", task_id)],
+        fields=["name", "project_id", "stage_id"],
+        limit=1,
+    )
+    if not tasks:
+        raise ValueError(f"Task {task_id} not found")
+
+    task = tasks[0]
+    project_id = task["project_id"][0] if task["project_id"] else None
+
+    # Find the "Done" stage (fold=True and is the last stage, or name contains "Done"/"Terminé")
+    done_stage = None
+
+    # Strategy 1: Look for folded stages in the project's type
+    stage_domain = [("fold", "=", True)]
+    if project_id:
+        stage_domain = ["|", ("project_ids", "in", [project_id]), ("project_ids", "=", False),
+                        ("fold", "=", True)]
+
+    done_stages = client.search_read(
+        "project.task.type", stage_domain,
+        fields=["name", "sequence", "fold"],
+        limit=10, order="sequence desc",
+    )
+
+    if done_stages:
+        # Prefer stage with "done"/"terminé"/"hoàn thành" in the name
+        for s in done_stages:
+            name_lower = (s.get("name") or "").lower()
+            if any(kw in name_lower for kw in ("done", "terminé", "hoàn thành", "hoàn tất", "xong")):
+                done_stage = s
+                break
+        if not done_stage:
+            done_stage = done_stages[0]  # Use the highest sequence folded stage
+    else:
+        # Strategy 2: Get all stages and pick the last one
+        all_stages = client.search_read(
+            "project.task.type", [],
+            fields=["name", "sequence", "fold"],
+            limit=50, order="sequence desc",
+        )
+        if all_stages:
+            done_stage = all_stages[0]
+
+    if not done_stage:
+        raise ValueError("Could not find a 'Done' stage for this project")
+
+    client.write("project.task", [task_id], {"stage_id": done_stage["id"]})
+    return json.dumps({
+        "success": True,
+        "task_id": task_id,
+        "task_name": task["name"],
+        "new_stage": done_stage["name"],
+        "message": f"Task '{task['name']}' moved to '{done_stage['name']}'",
+    }, indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_audit_log(action: str, model: str, record_id: int, user_telegram_id: str, details: str) -> str:
+    """Create an audit log entry on a record using message_post (chatter) or mail.message.
+
+    Args:
+        action: Action performed (e.g. 'mark_contacted', 'change_owner', 'escalate')
+        model: Model of the record (e.g. 'crm.lead', 'account.move')
+        record_id: Record ID to log against
+        user_telegram_id: Telegram user ID who performed the action
+        details: Description of what was done
+    """
+    client = get_client()
+
+    # Verify record exists
+    records = client.search_read(
+        model, [("id", "=", record_id)],
+        fields=["name"] if model != "account.move" else ["name"],
+        limit=1,
+    )
+    if not records:
+        raise ValueError(f"{model} record {record_id} not found")
+
+    log_body = (
+        f"<p><strong>Audit Log</strong></p>"
+        f"<ul>"
+        f"<li><strong>Action:</strong> {action}</li>"
+        f"<li><strong>Telegram User:</strong> {user_telegram_id}</li>"
+        f"<li><strong>Details:</strong> {details}</li>"
+        f"<li><strong>Timestamp:</strong> {datetime.now().isoformat()}</li>"
+        f"</ul>"
+    )
+
+    # Try message_post first (works on models that inherit mail.thread)
+    log_id = None
+    try:
+        with client._lock:
+            log_id = client._object.execute_kw(
+                client.db, client.uid, client.password,
+                model, "message_post", [[record_id]],
+                {
+                    "body": log_body,
+                    "message_type": "comment",
+                    "subtype_xmlid": "mail.mt_note",
+                },
+            )
+    except xmlrpc.client.Fault:
+        # Model doesn't support message_post — create a standalone mail.message
+        try:
+            log_id = client.create("mail.message", {
+                "model": model,
+                "res_id": record_id,
+                "body": log_body,
+                "message_type": "comment",
+            })
+        except Exception as e:
+            logger.warning(f"Could not create audit log: {e}")
+            log_id = None
+
+    return json.dumps({
+        "success": True,
+        "log_id": log_id,
+        "action": action,
+        "model": model,
+        "record_id": record_id,
+        "user_telegram_id": user_telegram_id,
+        "message": f"Audit log created for {action} on {model} #{record_id}",
+    }, indent=2, ensure_ascii=False, default=str)
+
+# ---------------------------------------------------------------------------
+# Telegram Permission System
+# ---------------------------------------------------------------------------
+
+COMMAND_CATALOG = {
+    "ceo_reports": {
+        "label": "📊 Báo cáo CEO",
+        "commands": {
+            "morning_brief": "Báo cáo buổi sáng",
+            "ceo_alert": "Cảnh báo khẩn cấp",
+            "doanhso_homnay": "Doanh số hôm nay",
+            "brief_hunter": "Tổng hợp Hunter",
+            "brief_farmer": "Tổng hợp Farmer",
+            "brief_ar": "Tổng hợp công nợ",
+            "brief_cash": "Tổng hợp dòng tiền",
+        }
+    },
+    "hunter": {
+        "label": "🎯 Hunter — Săn khách mới",
+        "commands": {
+            "hunter_today": "Tổng quan Hunter hôm nay",
+            "hunter_sla": "SLA phản hồi lead",
+            "hunter_quotes": "Báo giá đang chờ",
+            "hunter_first_orders": "Đơn hàng đầu tiên",
+            "hunter_sources": "Nguồn lead",
+            "khachmoi_homnay": "Khách mới hôm nay",
+        }
+    },
+    "farmer": {
+        "label": "🌱 Farmer — Chăm khách cũ",
+        "commands": {
+            "farmer_today": "Tổng quan Farmer hôm nay",
+            "farmer_reorder": "Khách cần tái đặt hàng",
+            "farmer_sleeping": "Khách ngủ đông",
+            "farmer_vip": "Khách VIP",
+            "farmer_ar": "Công nợ Farmer",
+            "farmer_retention": "Tỷ lệ giữ chân",
+        }
+    },
+    "finance": {
+        "label": "💰 Finance — Công nợ",
+        "commands": {
+            "congno_denhan": "Công nợ đến hạn",
+            "congno_quahan": "Công nợ quá hạn",
+        }
+    },
+    "ops": {
+        "label": "⚙️ Vận hành",
+        "commands": {
+            "task_quahan": "Task quá hạn",
+            "midday": "Báo cáo giữa ngày",
+            "eod": "Báo cáo cuối ngày",
+        }
+    },
+    "utility": {
+        "label": "🔧 Tiện ích",
+        "commands": {
+            "kpi": "KPI dashboard",
+            "pipeline": "Pipeline CRM",
+            "newlead": "Tạo lead mới",
+            "newcustomer": "Tạo khách hàng",
+            "quote": "Tạo báo giá + PDF",
+            "invoice": "Tạo hóa đơn + PDF",
+            "credit": "Kiểm tra công nợ KH",
+            "findcustomer": "Tìm khách hàng",
+        }
+    },
+    "actions": {
+        "label": "⚡ Hành động nhanh",
+        "commands": {
+            "da_lien_he": "Đánh dấu đã liên hệ lead",
+            "da_nhac_no": "Đánh dấu đã nhắc nợ",
+            "gan_dispute": "Gắn tranh chấp hóa đơn",
+            "doi_owner": "Đổi người phụ trách",
+            "escalate": "Báo cáo cấp trên",
+            "tao_task": "Tạo task mới",
+            "xong": "Đánh dấu hoàn thành task",
+        }
+    },
+}
+
+
+def _resolve_user_permissions(client, telegram_id: str):
+    """Look up Telegram user and role, return (user, role) or raise ValueError."""
+    users = client.search_read(
+        "masios.telegram_user",
+        [("telegram_id", "=", telegram_id)],
+        fields=["name", "role_id", "extra_commands", "blocked_commands", "active"],
+        limit=1,
+    )
+    if not users:
+        return None, None
+
+    user = users[0]
+    if not user.get("active", True):
+        return user, None
+
+    role_id = user["role_id"][0] if user.get("role_id") else None
+    if not role_id:
+        return user, None
+
+    roles = client.search_read(
+        "masios.telegram_role",
+        [("id", "=", role_id)],
+        fields=["name", "code", "allowed_commands", "allowed_actions", "view_scope"],
+        limit=1,
+    )
+    role = roles[0] if roles else None
+    return user, role
+
+
+def _parse_command_list(raw: str | None) -> list[str]:
+    """Parse a newline-separated command list string."""
+    if not raw or not raw.strip():
+        return []
+    return [c.strip() for c in raw.strip().split("\n") if c.strip()]
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_telegram_check_permission(telegram_id: str, command: str = "", action: str = "") -> str:
+    """Check if a Telegram user has permission to use a command or perform an action.
+
+    Args:
+        telegram_id: Telegram user ID
+        command: Command to check (e.g. 'morning_brief', 'quote'). Empty = skip command check.
+        action: Action to check (e.g. 'create_lead', 'change_owner'). Empty = skip action check.
+    """
+    client = get_client()
+    user, role = _resolve_user_permissions(client, telegram_id)
+
+    if user is None:
+        return json.dumps({
+            "allowed": False,
+            "reason": "Telegram ID chưa được đăng ký trong hệ thống",
+        }, indent=2, ensure_ascii=False)
+
+    if role is None:
+        if not user.get("active", True):
+            return json.dumps({
+                "allowed": False,
+                "reason": "Tài khoản đã bị vô hiệu hóa",
+            }, indent=2, ensure_ascii=False)
+        return json.dumps({
+            "allowed": False,
+            "reason": "Tài khoản chưa được gán vai trò",
+        }, indent=2, ensure_ascii=False)
+
+    result = {
+        "allowed": True,
+        "role": role["code"],
+        "role_name": role["name"],
+        "user_name": user["name"],
+        "view_scope": role.get("view_scope", ""),
+        "reason": "OK",
+    }
+
+    # Parse role allowed commands
+    raw_cmds = (role.get("allowed_commands") or "").strip()
+    if raw_cmds == "*":
+        allowed_cmds = ["*"]
+    else:
+        allowed_cmds = _parse_command_list(role.get("allowed_commands"))
+
+    # Add extra commands, collect blocked
+    extra = _parse_command_list(user.get("extra_commands"))
+    if extra:
+        allowed_cmds.extend(extra)
+    blocked = set(_parse_command_list(user.get("blocked_commands")))
+
+    # Check command permission
+    if command:
+        if command in blocked:
+            result["allowed"] = False
+            result["reason"] = f"Lệnh '{command}' đã bị chặn cho tài khoản của bạn"
+        elif "*" in allowed_cmds:
+            result["allowed"] = True
+        elif command in allowed_cmds:
+            result["allowed"] = True
+        else:
+            result["allowed"] = False
+            result["reason"] = f"Vai trò '{role['name']}' không có quyền sử dụng lệnh '{command}'"
+
+    # Check action permission
+    if action and result["allowed"]:
+        raw_actions = (role.get("allowed_actions") or "").strip()
+        if raw_actions == "*":
+            allowed_actions = ["*"]
+        else:
+            allowed_actions = _parse_command_list(role.get("allowed_actions"))
+
+        if "*" in allowed_actions:
+            result["allowed"] = True
+        elif action in allowed_actions:
+            result["allowed"] = True
+        else:
+            result["allowed"] = False
+            result["reason"] = f"Vai trò '{role['name']}' không có quyền thực hiện hành động '{action}'"
+
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_telegram_get_menu(telegram_id: str) -> str:
+    """Get the list of available commands for a Telegram user, organized by category.
+
+    Args:
+        telegram_id: Telegram user ID
+    """
+    client = get_client()
+    user, role = _resolve_user_permissions(client, telegram_id)
+
+    if user is None:
+        return json.dumps({
+            "error": "Telegram ID chưa được đăng ký trong hệ thống",
+        }, indent=2, ensure_ascii=False)
+
+    if role is None:
+        reason = "Tài khoản đã bị vô hiệu hóa" if not user.get("active", True) else "Tài khoản chưa được gán vai trò"
+        return json.dumps({"error": reason}, indent=2, ensure_ascii=False)
+
+    # Parse role allowed commands
+    raw_cmds = (role.get("allowed_commands") or "").strip()
+    if raw_cmds == "*":
+        allowed_cmds = {"*"}
+    else:
+        allowed_cmds = set(_parse_command_list(role.get("allowed_commands")))
+
+    # Add extra commands, collect blocked
+    extra = _parse_command_list(user.get("extra_commands"))
+    if extra:
+        allowed_cmds.update(extra)
+    blocked = set(_parse_command_list(user.get("blocked_commands")))
+
+    # Filter catalog
+    categories = {}
+    for cat_key, cat_data in COMMAND_CATALOG.items():
+        visible_commands = []
+        for cmd, desc in cat_data["commands"].items():
+            if cmd in blocked:
+                continue
+            if "*" in allowed_cmds or cmd in allowed_cmds:
+                visible_commands.append({"command": cmd, "description": desc})
+        if visible_commands:
+            categories[cat_key] = {
+                "label": cat_data["label"],
+                "commands": visible_commands,
+            }
+
+    return json.dumps({
+        "user_name": user["name"],
+        "role": role["code"],
+        "role_name": role["name"],
+        "view_scope": role.get("view_scope", ""),
+        "categories": categories,
+    }, indent=2, ensure_ascii=False)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_telegram_list_users() -> str:
+    """List all registered Telegram users with their roles."""
+    client = get_client()
+    users = client.search_read(
+        "masios.telegram_user", [],
+        fields=["name", "telegram_id", "telegram_username", "role_id", "active"],
+        order="name",
+    )
+
+    result = []
+    # Collect role IDs for batch lookup
+    role_ids = list({u["role_id"][0] for u in users if u.get("role_id")})
+    roles_map = {}
+    if role_ids:
+        roles = client.search_read(
+            "masios.telegram_role",
+            [("id", "in", role_ids)],
+            fields=["name", "code", "view_scope"],
+        )
+        roles_map = {r["id"]: r for r in roles}
+
+    for u in users:
+        role_data = {}
+        if u.get("role_id"):
+            r = roles_map.get(u["role_id"][0], {})
+            role_data = {
+                "role_name": r.get("name", ""),
+                "role_code": r.get("code", ""),
+                "view_scope": r.get("view_scope", ""),
+            }
+        else:
+            role_data = {"role_name": "", "role_code": "", "view_scope": ""}
+
+        result.append({
+            "name": u["name"],
+            "telegram_id": u["telegram_id"],
+            "telegram_username": u.get("telegram_username", ""),
+            "active": u.get("active", True),
+            **role_data,
+        })
+
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_telegram_register_user(telegram_id: str, name: str, role_code: str, telegram_username: str = "") -> str:
+    """Register a new Telegram user or update an existing one.
+
+    Args:
+        telegram_id: Telegram user ID
+        name: Display name for the user
+        role_code: Role code to assign (e.g. 'ceo', 'hunter', 'farmer', 'accountant')
+        telegram_username: Optional Telegram username (without @)
+    """
+    client = get_client()
+
+    # Find role by code
+    roles = client.search_read(
+        "masios.telegram_role",
+        [("code", "=", role_code)],
+        fields=["name", "code", "view_scope"],
+        limit=1,
+    )
+    if not roles:
+        available = client.search_read(
+            "masios.telegram_role", [],
+            fields=["code", "name"],
+            order="code",
+        )
+        codes = [r["code"] for r in available]
+        raise ValueError(f"Vai trò '{role_code}' không tồn tại. Các vai trò hợp lệ: {', '.join(codes)}")
+
+    role = roles[0]
+
+    # Check if user already exists (including inactive)
+    existing = client.search_read(
+        "masios.telegram_user",
+        [("telegram_id", "=", telegram_id)],
+        fields=["id", "name"],
+        limit=1,
+    )
+
+    vals = {
+        "telegram_id": telegram_id,
+        "name": name,
+        "role_id": role["id"],
+        "active": True,
+    }
+    if telegram_username:
+        vals["telegram_username"] = telegram_username
+
+    if existing:
+        client.write("masios.telegram_user", [existing[0]["id"]], vals)
+        user_id = existing[0]["id"]
+        action = "updated"
+    else:
+        user_id = client.create("masios.telegram_user", vals)
+        action = "created"
+
+    return json.dumps({
+        "success": True,
+        "action": action,
+        "user_id": user_id,
+        "name": name,
+        "telegram_id": telegram_id,
+        "telegram_username": telegram_username,
+        "role_code": role["code"],
+        "role_name": role["name"],
+        "view_scope": role.get("view_scope", ""),
+        "message": f"Người dùng '{name}' đã được {action} với vai trò '{role['name']}'",
+    }, indent=2, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,12 @@ metadata:
 
 # Tạo Lead Mới
 
+## Bước 0: Kiểm tra quyền
+1. Lấy telegram_id từ session
+2. Gọi: `mcporter call odoo.odoo_telegram_check_permission telegram_id="<ID>" command="newlead"`
+3. Nếu allowed=false → hiển thị "🚫 {reason}" và DỪNG
+4. Nếu allowed=true → tiếp tục các bước bên dưới
+
 ## Workflow
 1. Hỏi user ngay 4 thông tin:
    - Tên lead (bắt buộc)

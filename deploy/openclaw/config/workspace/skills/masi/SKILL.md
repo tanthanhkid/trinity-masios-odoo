@@ -1,60 +1,41 @@
 ---
 name: masi
-description: Hiển thị danh sách lệnh nhanh — gõ /masi để xem tất cả commands
-allowed-tools: Bash
-metadata:
-  { "openclaw": { "emoji": "🦞" } }
+triggers:
+  - /masi
+  - menu
+  - help
+  - commands
 ---
 
-# Menu lệnh Masi OS
+# Menu Command Center
 
-Khi skill này được gọi, NGAY LẬP TỨC trả lời nội dung sau (KHÔNG chạy lệnh, KHÔNG hỏi gì):
+## Bước thực hiện:
 
-Chào bạn! Tôi là trợ lý Odoo của Masi OS. Dưới đây là 33 lệnh nhanh:
+1. Lấy Telegram user ID từ session context
+2. Gọi MCP: `mcporter call odoo.odoo_telegram_get_menu telegram_id="<ID>"`
+3. Nếu lỗi hoặc user chưa đăng ký: hiển thị "🚫 Bạn chưa được đăng ký trong hệ thống. Liên hệ admin."
+4. Hiển thị menu theo format:
 
-**CEO — Báo cáo tổng quan**
-🌅 `/morning_brief` — Báo cáo buổi sáng (Hunter/Farmer/AR/Alerts)
-🚨 `/ceo_alert` — Cảnh báo khẩn cấp top 3-5 vấn đề
-💵 `/doanhso_homnay` — Doanh số hôm nay
-🏹 `/brief_hunter` — Tổng hợp Hunter
-🌿 `/brief_farmer` — Tổng hợp Farmer
-📋 `/brief_ar` — Tổng hợp công nợ phải thu
-💰 `/brief_cash` — Tổng hợp dòng tiền
+```
+🏢 MASI OS Command Center
+👤 [user_name] | Vai trò: [role_name]
 
-**Hunter — Săn khách mới**
-🏹 `/hunter_today` — Tổng quan Hunter hôm nay
-⏱️ `/hunter_sla` — SLA phản hồi lead
-📝 `/hunter_quotes` — Báo giá đang chờ
-🎯 `/hunter_first_orders` — Đơn hàng đầu tiên
-📊 `/hunter_sources` — Nguồn lead
-👤 `/khachmoi_homnay` — Khách mới hôm nay
+[Cho mỗi category có commands:]
+[category.label]
+  /[command] — [description]
+  /[command] — [description]
 
-**Farmer — Chăm khách cũ**
-🌿 `/farmer_today` — Tổng quan Farmer hôm nay
-🔄 `/farmer_reorder` — Khách cần tái đặt hàng
-😴 `/farmer_sleeping` — Khách ngủ đông
-⭐ `/farmer_vip` — Khách VIP
-💳 `/farmer_ar` — Công nợ Farmer
-📈 `/farmer_retention` — Tỷ lệ giữ chân khách
+[Category tiếp theo...]
 
-**Finance — Công nợ**
-📅 `/congno_denhan` — Công nợ đến hạn
-⚠️ `/congno_quahan` — Công nợ quá hạn
+⚡ Hành động nhanh (nếu có):
+  da_lien_he <ID> — [description]
+  ...
 
-**Ops — Vận hành**
-📌 `/task_quahan` — Task quá hạn
-☀️ `/midday` — Báo cáo giữa ngày
-🌙 `/eod` — Báo cáo cuối ngày
+💡 Gõ /command để thực hiện. Quyền được quản lý bởi admin trên Odoo.
+```
 
-**Utility — Tiện ích**
-📊 `/kpi` — KPI dashboard
-📈 `/pipeline` — Pipeline CRM
-🎯 `/newlead` — Tạo lead mới
-👤 `/newcustomer` — Tạo khách hàng mới
-📋 `/quote` — Tạo báo giá + gửi PDF
-🧾 `/invoice` — Tạo hóa đơn + gửi PDF
-💰 `/credit` — Kiểm tra công nợ KH
-🔍 `/findcustomer` — Tìm khách hàng
+5. Chỉ hiển thị categories và commands mà MCP trả về (đã lọc theo quyền)
+6. KHÔNG hardcode danh sách commands — luôn lấy từ MCP
 
 Hoặc bạn có thể chat tự nhiên, ví dụ:
 - "Tổng quan doanh thu tháng này"

@@ -1,0 +1,4 @@
+{
+  "_deprecated": "Permissions now managed in Odoo. Go to Command Center > Telegram > Vai trò/Người dùng. This file is kept for reference only.",
+  "_see": "odoo_telegram_check_permission and odoo_telegram_get_menu MCP tools"
+}

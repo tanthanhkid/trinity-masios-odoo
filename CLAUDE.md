@@ -164,8 +164,10 @@ so these must be set via CLI after config generation.
 ```
 
 ## Conventions
-- Use `sshpass` for SSH connections to Odoo server
-- Use `ssh masios@100.81.203.48` for Mac deploy machine (password in memory)
+- **SSH from Windows: ALWAYS use `paramiko` (Python)** — NEVER use `sshpass` (fails on Windows due to TTY issues, wastes time every session)
+  - Odoo server: `paramiko.connect('103.72.97.51', port=24700, username='root')` (no password needed)
+  - Mac Studio: `paramiko.connect('100.81.203.48', username='masios', password='19112003', allow_agent=False, look_for_keys=False)`
+  - For file transfers: use `sftp = ssh.open_sftp()` then `sftp.put(local, remote)`
 - Always backup before destructive operations
 - Log errors and fixes to Smart Memory SQLite
 - Custom modules go in `/opt/odoo/custom-addons/`

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- CEO Minh Sang -->
+        <record id="telegram_user_ceo" model="masios.telegram_user">
+            <field name="name">Minh Sang</field>
+            <field name="telegram_id">2048339435</field>
+            <field name="role_id" ref="telegram_role_ceo"/>
+            <field name="notes">CEO - Toàn quyền truy cập Command Center</field>
+        </record>
+
+        <!-- Hunter Lead -->
+        <record id="telegram_user_hunter_lead_1" model="masios.telegram_user">
+            <field name="name">User 2</field>
+            <field name="telegram_id">1481072032</field>
+            <field name="role_id" ref="telegram_role_hunter_lead"/>
+        </record>
+
+    </data>
+</odoo>

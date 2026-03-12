@@ -8,6 +8,12 @@ metadata:
 
 # Tạo Hóa Đơn
 
+## Bước 0: Kiểm tra quyền
+1. Lấy telegram_id từ session
+2. Gọi: `mcporter call odoo.odoo_telegram_check_permission telegram_id="<ID>" command="invoice"`
+3. Nếu allowed=false → hiển thị "🚫 {reason}" và DỪNG
+4. Nếu allowed=true → tiếp tục các bước bên dưới
+
 ## Workflow
 1. Hỏi user: mã đơn hàng (SO number hoặc ID)
 2. Tìm đơn hàng trong hệ thống

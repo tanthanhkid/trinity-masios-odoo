@@ -14,3 +14,7 @@ access_account_move_cc_admin,account.move.command.center.admin,account.model_acc
 access_project_task_cc_user,project.task.command.center.user,project.model_project_task,sales_team.group_sale_salesman,1,0,0,0
 access_project_task_cc_manager,project.task.command.center.manager,project.model_project_task,sales_team.group_sale_manager,1,1,1,0
 access_project_task_cc_admin,project.task.command.center.admin,project.model_project_task,base.group_system,1,1,1,1
+access_telegram_role_manager,masios.telegram_role manager,model_masios_telegram_role,base.group_system,1,1,1,1
+access_telegram_role_user,masios.telegram_role user,model_masios_telegram_role,base.group_user,1,0,0,0
+access_telegram_user_manager,masios.telegram_user manager,model_masios_telegram_user,base.group_system,1,1,1,1
+access_telegram_user_user,masios.telegram_user user,model_masios_telegram_user,base.group_user,1,0,0,0

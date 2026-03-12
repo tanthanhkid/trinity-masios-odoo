@@ -25,6 +25,9 @@
     'data': [
         'security/ir.model.access.csv',
         'data/team_data.xml',
+        'views/telegram_user_views.xml',
+        'data/telegram_role_data.xml',
+        'data/telegram_user_data.xml',
     ],
     'installable': True,
     'application': False,

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- CEO -->
+        <record id="telegram_role_ceo" model="masios.telegram_role">
+            <field name="name">CEO</field>
+            <field name="code">ceo</field>
+            <field name="sequence">1</field>
+            <field name="view_scope">all</field>
+            <field name="description">Toàn quyền truy cập mọi command và action trong Command Center.</field>
+            <field name="allowed_commands">*</field>
+            <field name="allowed_actions">*</field>
+        </record>
+
+        <!-- Hunter Lead -->
+        <record id="telegram_role_hunter_lead" model="masios.telegram_role">
+            <field name="name">Hunter Lead</field>
+            <field name="code">hunter_lead</field>
+            <field name="sequence">2</field>
+            <field name="view_scope">hunter</field>
+            <field name="description">Quản lý đội Hunter — theo dõi lead mới, pipeline, báo giá, SLA.</field>
+            <field name="allowed_commands">masi
+morning_brief
+ceo_alert
+doanhso_homnay
+brief_hunter
+hunter_today
+hunter_sla
+hunter_quotes
+hunter_first_orders
+hunter_sources
+khachmoi_homnay
+kpi
+pipeline
+newlead
+newcustomer
+quote
+credit
+findcustomer
+midday
+eod</field>
+            <field name="allowed_actions">da_lien_he
+doi_owner
+escalate
+tao_task
+xong</field>
+        </record>
+
+        <!-- Farmer Lead -->
+        <record id="telegram_role_farmer_lead" model="masios.telegram_role">
+            <field name="name">Farmer Lead</field>
+            <field name="code">farmer_lead</field>
+            <field name="sequence">3</field>
+            <field name="view_scope">farmer</field>
+            <field name="description">Quản lý đội Farmer — chăm sóc khách hàng cũ, tái đặt hàng, công nợ, VIP.</field>
+            <field name="allowed_commands">masi
+morning_brief
+doanhso_homnay
+brief_farmer
+farmer_today
+farmer_reorder
+farmer_sleeping
+farmer_vip
+farmer_ar
+farmer_retention
+congno_denhan
+congno_quahan
+brief_ar
+kpi
+pipeline
+newcustomer
+credit
+findcustomer
+midday
+eod</field>
+            <field name="allowed_actions">da_nhac_no
+gan_dispute
+doi_owner
+escalate
+tao_task
+xong</field>
+        </record>
+
+        <!-- Finance -->
+        <record id="telegram_role_finance" model="masios.telegram_role">
+            <field name="name">Finance</field>
+            <field name="code">finance</field>
+            <field name="sequence">4</field>
+            <field name="view_scope">finance</field>
+            <field name="description">Tài chính — công nợ, hóa đơn, tín dụng khách hàng.</field>
+            <field name="allowed_commands">masi
+congno_denhan
+congno_quahan
+brief_ar
+brief_cash
+farmer_ar
+kpi
+invoice
+credit
+findcustomer</field>
+            <field name="allowed_actions">da_nhac_no
+gan_dispute
+escalate</field>
+        </record>
+
+        <!-- Ops/PM -->
+        <record id="telegram_role_ops" model="masios.telegram_role">
+            <field name="name">Ops/PM</field>
+            <field name="code">ops</field>
+            <field name="sequence">5</field>
+            <field name="view_scope">ops</field>
+            <field name="description">Vận hành / Quản lý dự án — task, tiến độ, phối hợp team.</field>
+            <field name="allowed_commands">masi
+task_quahan
+midday
+eod
+hunter_today
+farmer_today
+doanhso_homnay
+kpi
+pipeline</field>
+            <field name="allowed_actions">xong
+doi_owner
+escalate
+tao_task</field>
+        </record>
+
+    </data>
+</odoo>
