@@ -73,12 +73,12 @@ def morning_brief():
 
     leads_today = sc(models, uid, "crm.lead", [("create_date", ">=", today)])
 
-    lines = ["<b>Bao cao buoi sang</b>", "", "<b>Pipeline CRM:</b>"]
+    lines = ["<b>Báo cáo buổi sáng</b>", "", "<b>Pipeline CRM:</b>"]
     lines.extend(pipeline_lines)
     lines.append("")
-    lines.append(f"Doanh thu hom qua: {rev_y:,.0f} VND")
-    lines.append(f"Lead moi hom nay: {leads_today}")
-    lines.append(f"Hoa don qua han: {overdue}")
+    lines.append(f"Doanh thu hôm qua: {rev_y:,.0f} VND")
+    lines.append(f"Lead mới hôm nay: {leads_today}")
+    lines.append(f"Hóa đơn quá hạn: {overdue}")
     return "\n".join(lines)
 
 
@@ -96,11 +96,11 @@ def midday_flash():
                   ("amount_residual", ">", 0), ("invoice_date_due", "<", today)])
 
     lines = [
-        "<b>Bao cao giua ngay</b>", "",
-        f"Doanh thu hom nay: {rev:,.0f} VND",
-        f"Don hang: {len(so)}",
-        f"Lead moi: {leads}",
-        f"Hoa don qua han: {overdue}",
+        "<b>Báo cáo giữa ngày</b>", "",
+        f"Doanh thu hôm nay: {rev:,.0f} VND",
+        f"Đơn hàng: {len(so)}",
+        f"Lead mới: {leads}",
+        f"Hóa đơn quá hạn: {overdue}",
     ]
     return "\n".join(lines)
 
@@ -120,9 +120,9 @@ def eod_report():
     inv_total = sum(i["amount_total"] for i in inv)
 
     lines = [
-        "<b>Bao cao cuoi ngay</b>", "",
-        f"Doanh thu: {rev:,.0f} VND ({len(so)} don)",
-        f"Hoa don xuat: {inv_total:,.0f} VND ({len(inv)} hoa don)",
+        "<b>Báo cáo cuối ngày</b>", "",
+        f"Doanh thu: {rev:,.0f} VND ({len(so)} đơn)",
+        f"Hóa đơn xuất: {inv_total:,.0f} VND ({len(inv)} hóa đơn)",
     ]
     return "\n".join(lines)
 
@@ -137,7 +137,7 @@ def sla_alert():
                   order="create_date asc")
     if not breached:
         return None
-    lines = [f"<b>SLA Alert!</b> {len(breached)} leads vuot 48h", ""]
+    lines = [f"<b>SLA Alert!</b> {len(breached)} leads vượt 48h", ""]
     for l in breached:
         user = l["user_id"][1] if l["user_id"] else "N/A"
         lines.append(f"- {l['name']} ({user})")
@@ -155,11 +155,11 @@ def overdue_ar():
     if not invoices:
         return None
     total = sum(i["amount_residual"] for i in invoices)
-    lines = [f"<b>Cong no qua han</b> - Tong: {total:,.0f} VND", ""]
+    lines = [f"<b>Công nợ quá hạn</b> - Tổng: {total:,.0f} VND", ""]
     for i in invoices[:5]:
         partner = i["partner_id"][1] if i["partner_id"] else "N/A"
         days = (date.today() - date.fromisoformat(str(i["invoice_date_due"])[:10])).days
-        lines.append(f"- {partner}: {i['amount_residual']:,.0f} VND ({days} ngay)")
+        lines.append(f"- {partner}: {i['amount_residual']:,.0f} VND ({days} ngày)")
     return "\n".join(lines)
 
 

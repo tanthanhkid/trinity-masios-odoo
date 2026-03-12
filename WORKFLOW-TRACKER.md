@@ -73,9 +73,89 @@
 
 > *SKIP: Module `project` chưa cài trên production. Tool đã handle gracefully.
 
-**[COMMENT]:**
+**[COMMENT]:** Các tool bổ sung dùm tôi mô tả chi tiết thêm cho toàn bộ tool và mcp
 
-**[REPLY]:**
+**[REPLY]:** Đã bổ sung mô tả chi tiết bên dưới.
+
+### Chi tiết toàn bộ MCP Tools
+
+**MCP (Model Context Protocol)** là cầu nối giữa AI Agent (OpenClaw) và Odoo. Agent gọi tool → MCP server dịch thành XML-RPC call → Odoo xử lý → trả kết quả JSON.
+
+#### System & Discovery (5 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_server_info` | (không cần) | Phiên bản Odoo, DB name, số modules | Kiểm tra kết nối, health check |
+| `odoo_list_models` | `filter` (tùy chọn, vd: "crm") | Danh sách models khớp filter | Khám phá hệ thống, tìm model |
+| `odoo_model_fields` | `model` (vd: "crm.lead") | Tất cả fields với type, string, relation | Trước khi query để biết field names |
+| `odoo_model_access` | `model` | Quyền read/write/create/unlink | Kiểm tra quyền truy cập |
+| `odoo_model_views` | `model`, `view_type` | XML view definition | Debug UI, xem form/tree layout |
+
+#### CRUD (6 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_search_read` | `model`, `domain`, `fields`, `limit`, `order` | Danh sách records JSON | Đọc dữ liệu bất kỳ model |
+| `odoo_count` | `model`, `domain` | Số lượng records | Đếm nhanh không cần load data |
+| `odoo_create` | `model`, `values` (JSON) | ID record mới | Tạo record bất kỳ (lead, task, etc.) |
+| `odoo_write` | `model`, `record_id`, `values` | true/false | Cập nhật record |
+| `odoo_delete` | `model`, `record_id` | true/false | Xóa record |
+| `odoo_execute` | `model`, `method`, `args` | Kết quả method | Gọi server action, workflow |
+
+#### CRM (2 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_crm_stages` | (không cần) | Các giai đoạn pipeline + số leads mỗi giai đoạn | Xem tổng quan pipeline |
+| `odoo_crm_lead_summary` | `stage_id`, `user_id` (tùy chọn) | Leads chi tiết theo bộ lọc | Drill-down vào từng giai đoạn |
+
+#### Sales & Invoicing (5 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_sale_order_summary` | `state`, `partner_id` (tùy chọn) | Danh sách đơn hàng + tổng tiền | Xem báo giá/đơn hàng |
+| `odoo_create_sale_order` | `partner_id`, `order_lines` [{product_id, qty, price}] | ID đơn hàng mới (S000xx) | Tạo báo giá mới |
+| `odoo_confirm_sale_order` | `order_id` | Trạng thái confirmed | Xác nhận báo giá → đơn hàng |
+| `odoo_invoice_summary` | `state`, `partner_id` (tùy chọn) | Danh sách hóa đơn | Xem hóa đơn |
+| `odoo_create_invoice_from_so` | `order_id` | ID hóa đơn mới (INV/xxxx) | Tạo hóa đơn từ đơn hàng đã xác nhận |
+
+#### Customer & Credit (4 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_create_customer` | `name`, `phone`, `email`, `company_type`, `classification` | ID khách hàng mới | Tạo KH mới (đơn giản, không cần JSON) |
+| `odoo_customer_credit_status` | `partner_id` hoặc `name` | Hạn mức, công nợ hiện tại, % sử dụng | Kiểm tra trước khi bán hàng |
+| `odoo_customer_set_classification` | `partner_id`, `classification` | OK | Phân loại KH mới/cũ |
+| `odoo_customers_exceeding_credit` | (không cần) | Danh sách KH vượt hạn mức | Cảnh báo rủi ro |
+
+#### Dashboard (2 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_dashboard_kpis` | `period` (today/week/month) | Doanh thu, đơn hàng, leads, AR, tỷ lệ thu | KPI tổng quan cho CEO |
+| `odoo_pipeline_by_stage` | (không cần) | Leads theo giai đoạn + expected revenue | Xem pipeline trực quan |
+
+#### PDF Export (2 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_sale_order_pdf` | `order_id` | Base64 PDF content | Xuất PDF báo giá |
+| `odoo_invoice_pdf` | `invoice_id` | Base64 PDF content | Xuất PDF hóa đơn |
+
+#### Command Center — CEO Reports (7 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_morning_brief` | (không cần) | Pipeline, revenue hôm qua, Hunter/Farmer summary, alerts | Báo cáo đầu ngày 8am |
+| `odoo_ceo_alert` | `limit` | Top alerts: hóa đơn quá hạn, SLA breach, KH ngủ đông, VIP risk | Khi cần biết vấn đề khẩn |
+| `odoo_revenue_today` | (không cần) | Doanh thu hôm nay chia theo Hunter/Farmer | Theo dõi doanh số real-time |
+| `odoo_brief_hunter` | `period` (today/week/month) | Leads mới, SLA, báo giá chờ, đơn đầu tiên | Tổng hợp team Hunter |
+| `odoo_brief_farmer` | `period` | Đơn tái mua, KH ngủ đông, KH VIP, retention | Tổng hợp team Farmer |
+| `odoo_brief_ar` | (không cần) | Aging buckets (0-30, 31-60, 61-90, >90 ngày), top debtors | Tổng hợp công nợ phải thu |
+| `odoo_brief_cash` | `period` | Thu tiền, dự kiến 7 ngày, quá hạn, tỷ lệ thu | Tổng hợp dòng tiền |
+
+#### Command Center — Operations (7 tools)
+| Tool | Input | Output | Khi nào dùng |
+|------|-------|--------|-------------|
+| `odoo_hunter_today` | `section` (all/leads/sla/quotes) | Chi tiết hoạt động Hunter hôm nay | Drill-down từ brief_hunter |
+| `odoo_hunter_sla_details` | `status` (all/breached/ok), `limit` | Từng lead với SLA hours, trạng thái | Kiểm tra SLA cụ thể |
+| `odoo_farmer_today` | `section` (all/reorder/sleeping/vip) | Chi tiết hoạt động Farmer hôm nay | Drill-down từ brief_farmer |
+| `odoo_farmer_ar` | `limit` | Công nợ theo từng KH Farmer | AR chỉ phạm vi Farmer |
+| `odoo_congno` | `mode` (overdue/due_soon), `limit` | Hóa đơn quá hạn/sắp đến hạn + days overdue | Quản lý công nợ |
+| `odoo_task_overdue` | `limit`, `team_filter` | Tasks quá deadline + days overdue | Theo dõi task (cần module project) |
+| `odoo_flash_report` | `report_type` (midday/eod) | Snapshot nhanh: revenue, orders, leads, issues | Báo cáo giữa ngày / cuối ngày |
 
 ---
 
@@ -156,9 +236,17 @@
 
 **Implementation:** `alert_runner.py` trên Mac Studio — gọi Odoo XML-RPC trực tiếp, gửi qua Telegram Bot API.
 
-**[COMMENT]:**
+**[COMMENT]:** tất cả báo cáo phải là tiếng việt có dấu nhé, nãy tôi nhận thấy ko có dấu.
 
-**[REPLY]:**
+**[REPLY]:** Đã fix! `alert_runner.py` đã cập nhật toàn bộ tiếng Việt có dấu:
+- "Bao cao buoi sang" → "Báo cáo buổi sáng"
+- "Doanh thu hom nay" → "Doanh thu hôm nay"
+- "Don hang" → "Đơn hàng"
+- "Hoa don qua han" → "Hóa đơn quá hạn"
+- "Cong no qua han" → "Công nợ quá hạn"
+- "Lead moi" → "Lead mới"
+- Và tất cả strings khác.
+File cần deploy lại lên Mac Studio (sẽ làm sau khi xong tất cả comments).
 
 ---
 
@@ -301,9 +389,49 @@
 - [ ] Backup automation (daily Odoo DB backup)
 - [ ] Monitoring/alerting cho container health
 
-**[COMMENT]:**
+**[COMMENT]:** bạn xem lại skill liên quan odoo, tôi muốn tạo kiểm tra các module nào cần xài, cái nào ko xài thì tắt bớt cho nhẹ, chuyển odoo qua tiếng việt dùm tôi.
 
-**[REPLY]:**
+**[REPLY]:** Đã kiểm tra. Hiện có **81 modules** cài trên production. Phân tích:
+
+### Modules CẦN GIỮ (37 modules — core cho B2B Sales CRM)
+| Nhóm | Modules | Lý do |
+|------|---------|-------|
+| Core | base, web, web_editor, http_routing, bus, portal | Nền tảng bắt buộc |
+| CRM | crm, sales_team, sale, sale_management, sale_crm | Pipeline + bán hàng |
+| Invoice | account, account_payment, payment | Hóa đơn + thanh toán |
+| Products | product, uom | Sản phẩm + đơn vị |
+| Contacts | contacts, phone_validation | Quản lý KH |
+| Custom | masios_credit_control, masios_dashboard | Module tự build |
+| Project | project, project_todo | Task management |
+| Comms | mail, sms, mail_bot | Thông báo nội bộ |
+| Auth | auth_signup, auth_totp | Bảo mật |
+| PDF | sale_pdf_quote_builder | Xuất PDF báo giá |
+| Misc | digest, utm, resource, analytic, onboarding | Phụ trợ cần thiết |
+
+### Modules NÊN TẮT (ước tính ~25 modules — không dùng cho B2B)
+| Module | Mô tả | Lý do tắt |
+|--------|-------|-----------|
+| website, website_crm, website_crm_sms, website_payment, website_project, website_sms, website_mail | Website builder | Không dùng website công khai |
+| snailmail, snailmail_account | Gửi thư giấy | Không cần |
+| google_gmail | Gmail integration | Không dùng |
+| google_recaptcha | reCAPTCHA | Không có website |
+| web_unsplash | Thư viện ảnh | Không cần |
+| iap, iap_crm, iap_mail | In-App Purchase | Tốn phí, không cần |
+| crm_iap_enrich, crm_iap_mine | Lead enrichment/mining | Tốn phí IAP |
+| spreadsheet, spreadsheet_account, spreadsheet_dashboard, spreadsheet_dashboard_account, spreadsheet_dashboard_sale | Bảng tính | Dùng dashboard custom rồi |
+| account_edi_ubl_cii, sale_edi_ubl | E-invoicing UBL/CII | Không dùng ở VN |
+| account_add_gln | GLN codes | Không dùng |
+| social_media | Mạng xã hội | Không cần |
+
+### Chuyển tiếng Việt
+- Hiện tại: **English (US)** — chưa có tiếng Việt
+- Cần làm: Cài gói ngôn ngữ `vi_VN` + đặt mặc định cho admin
+- **Bạn xác nhận, tôi sẽ thực hiện:**
+  1. Cài Vietnamese language pack
+  2. Set admin language = vi_VN
+  3. Tắt ~25 modules không cần
+
+> ⚠️ Tắt modules cần cẩn thận (dependency chain). Tôi sẽ tắt từng nhóm và kiểm tra trước khi confirm.
 
 ---
 
