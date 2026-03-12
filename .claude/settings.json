@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /Users/thanhtran/OFFLINE_FILES/Code/odoo/.claude/hooks/commit-msg-hook.sh",
+            "command": "bash D:/Work/Masi-OS/Code/trinity-masios-odoo/.claude/hooks/commit-msg-hook.sh",
             "timeout": 10
           }
         ]

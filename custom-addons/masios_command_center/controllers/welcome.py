@@ -30,7 +30,7 @@ ROLES = {
              'desc': 'Tasks, tiến độ, blockers'},
             {'name': 'Dashboard', 'icon': 'fa-tachometer-alt', 'url': '/dashboard',
              'desc': 'KPI tổng hợp, pipeline chart, cảnh báo công nợ'},
-            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/command-center',
+            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/action-471',
              'desc': 'Quản lý vai trò Telegram, người dùng'},
         ],
         'tips': [
@@ -51,7 +51,7 @@ ROLES = {
              'desc': 'Tạo báo giá, theo dõi đơn hàng đầu tiên'},
             {'name': 'Khách hàng', 'icon': 'fa-users', 'url': '/odoo/contacts',
              'desc': 'Quản lý thông tin khách hàng mới'},
-            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/command-center',
+            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/action-471',
              'desc': 'Cấu hình Telegram bot'},
         ],
         'tips': [
@@ -73,7 +73,7 @@ ROLES = {
              'desc': 'Đơn tái đặt, theo dõi doanh số Farmer'},
             {'name': 'CRM', 'icon': 'fa-handshake', 'url': '/odoo/crm',
              'desc': 'Cơ hội upsell, cross-sell khách hàng cũ'},
-            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/command-center',
+            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/action-471',
              'desc': 'Cấu hình Telegram bot'},
         ],
         'tips': [
@@ -93,7 +93,7 @@ ROLES = {
              'desc': 'Tạo, đăng và quản lý hóa đơn'},
             {'name': 'Khách hàng', 'icon': 'fa-users', 'url': '/odoo/contacts',
              'desc': 'Hạn mức công nợ, trạng thái thanh toán'},
-            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/command-center',
+            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/action-471',
              'desc': 'Cấu hình Telegram bot'},
         ],
         'tips': [
@@ -117,7 +117,7 @@ ROLES = {
              'desc': 'Theo dõi trạng thái đơn hàng (đọc)'},
             {'name': 'Khách hàng', 'icon': 'fa-users', 'url': '/odoo/contacts',
              'desc': 'Thông tin khách hàng liên quan tasks'},
-            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/command-center',
+            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/action-471',
              'desc': 'Cấu hình Telegram bot'},
         ],
         'tips': [
@@ -134,11 +134,11 @@ ROLES = {
         'features': [
             {'name': 'Cài đặt', 'icon': 'fa-cog', 'url': '/odoo/settings',
              'desc': 'Cấu hình hệ thống, modules, users'},
-            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/command-center',
+            {'name': 'Command Center', 'icon': 'fa-satellite-dish', 'url': '/odoo/action-471',
              'desc': 'Quản lý vai trò và người dùng Telegram'},
             {'name': 'Khách hàng', 'icon': 'fa-users', 'url': '/odoo/contacts',
              'desc': 'Quản lý dữ liệu khách hàng'},
-            {'name': 'Ứng dụng', 'icon': 'fa-puzzle-piece', 'url': '/odoo/apps/modules',
+            {'name': 'Ứng dụng', 'icon': 'fa-puzzle-piece', 'url': '/odoo/action-39',
              'desc': 'Cài đặt/gỡ modules'},
         ],
         'tips': [
