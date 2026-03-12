@@ -411,7 +411,7 @@ File cần deploy lại lên Mac Studio (sẽ làm sau khi xong tất cả comme
 ### Modules NÊN TẮT (ước tính ~25 modules — không dùng cho B2B)
 | Module | Mô tả | Lý do tắt |
 |--------|-------|-----------|
-| website, website_crm, website_crm_sms, website_payment, website_project, website_sms, website_mail | Website builder | Không dùng website công khai |
+| website_crm, website_crm_sms, website_project, website_sms | Website forms/SMS | Không dùng web forms (⚠️ website core PHẢI GIỮ — masios_dashboard phụ thuộc) |
 | snailmail, snailmail_account | Gửi thư giấy | Không cần |
 | google_gmail | Gmail integration | Không dùng |
 | google_recaptcha | reCAPTCHA | Không có website |
@@ -431,7 +431,11 @@ File cần deploy lại lên Mac Studio (sẽ làm sau khi xong tất cả comme
   2. Set admin language = vi_VN
   3. Tắt ~25 modules không cần
 
-> ⚠️ Tắt modules cần cẩn thận (dependency chain). Tôi sẽ tắt từng nhóm và kiểm tra trước khi confirm.
+> ⚠️ **Lưu ý quan trọng:**
+> - `website` KHÔNG THỂ TẮT — `masios_dashboard` phụ thuộc vào nó
+> - `project` ĐÃ CÀI (cùng project_todo, project_account, sale_project, sale_service) — hỗ trợ `/task_quahan`
+> - `l10n_vn` (gói kế toán Việt Nam) có sẵn nhưng chưa cài — nên cài nếu cần hóa đơn theo chuẩn VN
+> - Tắt modules cần cẩn thận (dependency chain). Tôi sẽ tắt từng nhóm và kiểm tra trước khi confirm.
 
 ---
 
