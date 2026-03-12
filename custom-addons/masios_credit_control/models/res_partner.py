@@ -17,6 +17,7 @@ class ResPartner(models.Model):
     credit_limit = fields.Monetary(
         string='Hạn mức công nợ',
         currency_field='currency_id',
+        company_dependent=True,
         tracking=True,
     )
     outstanding_debt = fields.Monetary(
