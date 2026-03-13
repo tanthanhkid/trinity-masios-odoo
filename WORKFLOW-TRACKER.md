@@ -9,9 +9,10 @@
 | Component | Host | Status | Notes |
 |-----------|------|--------|-------|
 | Odoo 18.0 | 103.72.97.51:8069 | Running | Ubuntu 24.04, PostgreSQL 16 |
-| MCP Server | 103.72.97.51:8200 | Running | 40 tools, bearer token auth |
-| OpenClaw Bot 1 | Mac Studio:18789 | Healthy | @hdxthanhtt4bot, GLM-5 |
-| OpenClaw Bot 2 | Mac Studio:18790 | Healthy | @MASIBIO_bot, GLM-5 |
+| MCP Server | 103.72.97.51:8200 | Running | 51 tools, bearer token auth |
+| **Masi Bot v2** | 103.72.97.51 (systemd) | **Active** | @hdxthanhtt4bot, Qwen 3.5 Plus, <1s slash commands |
+| ~~OpenClaw Bot 1~~ | ~~Mac Studio:18789~~ | **Replaced** | Thay thế bởi Masi Bot v2 |
+| OpenClaw Bot 2 | Mac Studio:18790 | Healthy | @MASIBIO_bot, standalone |
 | n8n | Mac Studio:5678 | Running | Chưa dùng — alert qua cron |
 | Alert Cron | Mac Studio crontab | Active | 5 scheduled reports |
 

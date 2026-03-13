@@ -30,6 +30,14 @@
 - .claude/skills/ = 3 skills (ssh-devops, odoo-selfhost, smart-memory)
 - .claude/hooks/ = smart memory hooks (copied from plugin)
 
+## Masi Telegram Bot v2
+- Replaced OpenClaw Bot 1 (@hdxthanhtt4bot) on 2026-03-13
+- Runs on Odoo server as systemd service `masi-bot.service`
+- Stack: python-telegram-bot + Anthropic SDK (Qwen 3.5 Plus) + MCP SSE client
+- 33 slash commands, 51 MCP tools, template formatting (<1s response)
+- Code: /opt/masi-bot/ on server, deploy/masi-bot/ in repo
+- Free-form chat uses LLM, slash commands use Python templates
+
 ## Plugin Location
 - Global: ~/.claude/plugins/local/devops-ssh/
 - Skills: ssh-devops, odoo-selfhost, smart-memory

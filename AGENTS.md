@@ -78,7 +78,7 @@ Custom fields added by `masios_credit_control` module:
 - `credit_available`: Monetary computed — credit_limit - outstanding_debt
 - `credit_exceeded`: Boolean computed — True khi vượt hạn mức
 
-## Available MCP Tools (26)
+## Available MCP Tools (51)
 
 ### Discovery & Introspection (6)
 - `odoo_server_info` — Server version and connection info
@@ -190,21 +190,24 @@ odoo_write(model="crm.lead", ids="[2]", values='{"stage_id":4}')  # Move to Won
 ```
 Telegram User
     ↓
-OpenClaw Agent (Docker container)
+Masi Bot v2 (systemd on Odoo server)
+    ↓ Anthropic SDK (Qwen 3.5 Plus)
+    ↓ MCP SSE client (direct, no mcporter)
     ↓
-mcporter (MCP client)
-    ↓
-MCP HTTP Server :8200 (bearer token auth)
+MCP HTTP Server :8200 (localhost, bearer token auth)
     ↓
 Odoo XML-RPC :8069
 ```
+
+> **Note:** OpenClaw Bot 1 đã được thay thế bởi Masi Bot v2.
+> Masi Bot v2 nhanh hơn 48-421x cho slash commands (template format, không cần LLM).
 
 ### Infrastructure
 
 | Machine | IP | User | Vai trò |
 |---------|-----|------|---------|
-| Odoo Server | 103.72.97.51 (SSH port 24700) | root | Odoo 18 + MCP HTTP server + PostgreSQL |
-| Mac Deploy | 100.81.203.48 (Tailscale) | masios | OrbStack/Docker — chạy OpenClaw bots |
+| Odoo Server | 103.72.97.51 (SSH port 24700) | root | Odoo 18 + MCP HTTP server + PostgreSQL + Masi Bot v2 |
+| Mac Deploy | 100.81.203.48 (Tailscale) | masios | OrbStack/Docker — OpenClaw Bot 2 only |
 
 ### Custom Modules Deployed
 

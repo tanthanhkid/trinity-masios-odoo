@@ -77,20 +77,55 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - **stdio** (Claude Code): `.mcp.json` → `uv run` → local process (no token needed)
 - **HTTP** (OpenClaw remote): `http://server:8200/sse` → mcporter connects (bearer token required)
 
-## Mac Deploy Machine (OpenClaw Host)
+## Masi Telegram Bot v2 (`deploy/masi-bot/`)
+Lightweight Telegram bot replacing OpenClaw — direct MCP integration, template-based formatting.
+
+- **Architecture**: python-telegram-bot → Anthropic SDK (Qwen 3.5 Plus via Alibaba) → MCP SSE client → Odoo
+- **Deploy**: Systemd service on Odoo server (`/opt/masi-bot/`, `masi-bot.service`)
+- **Model**: Qwen 3.5 Plus via Alibaba Anthropic-compatible API
+- **Telegram Bot**: `@hdxthanhtt4bot` (Bot 1)
+- **Whitelist**: `2048339435` (CEO), `1481072032` (Hunter Lead)
+- **Performance**: Slash commands < 1s (template formatter), free-form chat ~10s (LLM)
+- **Files**:
+  - `bot.py` — Telegram handler, RBAC, conversation memory, HTML formatting
+  - `agent.py` — LLM tool-calling loop + fast path (direct MCP → template)
+  - `mcp_client.py` — MCP SSE client, tool discovery, persistent connection
+  - `formatter.py` — Python template formatters for 27 slash commands (no LLM)
+  - `config.py` — env vars, system prompt, whitelist
+- **33 slash commands** registered in Telegram menu
+- **51 MCP tools** auto-discovered at startup
+
+### How it works
+1. **Slash commands** (`/kpi`, `/morning_brief`, etc.): Permission check → MCP tool call → Python template format → Telegram HTML. No LLM needed. Sub-second response.
+2. **Free-form chat**: Permission check → Qwen 3.5 Plus with 51 tools → tool-calling loop → Telegram HTML. ~10s response.
+
+### Deploy commands
+```bash
+# On Odoo server (103.72.97.51)
+systemctl status masi-bot    # Check status
+systemctl restart masi-bot   # Restart
+journalctl -u masi-bot -f    # Tail logs
+```
+
+## Mac Deploy Machine (OpenClaw Host — legacy)
 - **IP**: 100.81.203.48 (Tailscale)
 - **User**: masios
 - **Password**: (stored in memory/server-config.md)
 - **OS**: macOS 26.3, Apple Silicon (ARM64), Mac Studio
 - **Docker**: OrbStack v2.0.5, Docker 29.2.0
 - **Deploy paths**:
-  - Bot 1: `~/openclaw-odoo/` (port 18789) — Telegram `@hdxthanhtt4bot` (Docker, connected to Odoo)
+  - Bot 1: **REPLACED** by Masi Bot v2 on Odoo server (was `~/openclaw-odoo/` port 18789)
   - Bot 2: `~/openclaw-bot2-native/` (port 18790) — Telegram `@MASIBIO_bot` (native macOS, **disconnected from Odoo** — clean OpenClaw instance, no Odoo skills/MCP)
 - **Telegram whitelist**: `2048339435` (CEO), `1481072032`
 
-## MCP Tools (26 total)
-### Existing (13): server_info, list_models, model_fields, model_access, model_views, crm_stages, crm_lead_summary, search_read, count, create, write, delete, execute
-### Added (13): sale_order_summary, create_sale_order, confirm_sale_order, invoice_summary, create_invoice_from_so, create_customer, customer_credit_status, customer_set_classification, customers_exceeding_credit, dashboard_kpis, pipeline_by_stage, invoice_pdf, sale_order_pdf
+## MCP Tools (51 total)
+### Core (13): server_info, list_models, model_fields, model_access, model_views, crm_stages, crm_lead_summary, search_read, count, create, write, delete, execute
+### Sales & Invoice (7): sale_order_summary, create_sale_order, confirm_sale_order, invoice_summary, create_invoice_from_so, sale_order_pdf, invoice_pdf
+### Customer & Credit (4): create_customer, customer_credit_status, customer_set_classification, customers_exceeding_credit
+### Dashboard (2): dashboard_kpis, pipeline_by_stage
+### Command Center (14): morning_brief, ceo_alert, revenue_today, brief_hunter, brief_farmer, brief_ar, brief_cash, hunter_today, hunter_sla_details, farmer_today, farmer_ar, congno, task_overdue, flash_report
+### Actions (7): mark_contacted, mark_collection, set_dispute, change_owner, escalate, complete_task, audit_log
+### Telegram RBAC (4): telegram_check_permission, telegram_get_menu, telegram_list_users, telegram_register_user
 
 ## Custom Modules Deployed
 - `masios_credit_control` — Customer classification (new/old), credit limits, debt tracking
@@ -164,10 +199,12 @@ so these must be set via CLI after config generation.
 ```
 
 ## Conventions
-- **SSH from Windows: ALWAYS use `paramiko` (Python)** — NEVER use `sshpass` (fails on Windows due to TTY issues, wastes time every session)
-  - Odoo server: `paramiko.connect('103.72.97.51', port=24700, username='root')` (no password needed)
-  - Mac Studio: `paramiko.connect('100.81.203.48', username='masios', password='19112003', allow_agent=False, look_for_keys=False)`
-  - For file transfers: use `sftp = ssh.open_sftp()` then `sftp.put(local, remote)`
+- **SSH platform rules**:
+  - **macOS**: Use `sshpass` + `ssh` (native, fast) — install via `brew install hudochenkov/sshpass/sshpass`
+  - **Windows**: Use `paramiko` (Python) — `sshpass` fails on Windows due to TTY issues
+  - Odoo server: `ssh -p 24700 root@103.72.97.51` (no password needed)
+  - Mac Studio: `sshpass -p '19112003' ssh masios@100.81.203.48` (macOS) or `paramiko.connect('100.81.203.48', username='masios', password='19112003')` (Windows)
+  - For file transfers: `scp` (macOS) or `sftp = ssh.open_sftp()` (Windows/paramiko)
 - Always backup before destructive operations
 - Log errors and fixes to Smart Memory SQLite
 - Custom modules go in `/opt/odoo/custom-addons/`
