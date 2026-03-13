@@ -22,7 +22,7 @@ COMMAND_TOOL_MAP = {
     "/hunter_quotes": ("odoo_hunter_today", {"section": "quotes"}),
     "/hunter_first_orders": ("odoo_hunter_today", {"section": "first_orders"}),
     "/hunter_sources": ("odoo_hunter_today", {"section": "sources"}),
-    "/khachmoi_homnay": ("odoo_hunter_today", {"section": "leads"}),
+    "/khachmoi_homnay": ("odoo_hunter_today", {"section": "overview"}),
     "/farmer_today": ("odoo_farmer_today", {}),
     "/farmer_reorder": ("odoo_farmer_today", {"section": "reorder"}),
     "/farmer_sleeping": ("odoo_farmer_today", {"section": "sleeping"}),
@@ -39,6 +39,40 @@ COMMAND_TOOL_MAP = {
     "/credit": ("odoo_customers_exceeding_credit", {}),
 }
 
+# Tools that return PDF base64 — intercept and handle specially
+PDF_TOOLS = {"odoo_sale_order_pdf", "odoo_invoice_pdf"}
+
+
+def _extract_pdf(result_str: str) -> dict | None:
+    """Check if tool result contains PDF base64 data. Returns parsed dict or None."""
+    try:
+        data = json.loads(result_str) if isinstance(result_str, str) else result_str
+        if isinstance(data, dict) and data.get("pdf_base64"):
+            return data
+        # Handle nested {"result": "{...}"} from MCP
+        if isinstance(data, dict) and "result" in data:
+            inner = data["result"]
+            if isinstance(inner, str):
+                inner = json.loads(inner)
+            if isinstance(inner, dict) and inner.get("pdf_base64"):
+                return inner
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return None
+
+
+def _pdf_summary(pdf_data: dict) -> str:
+    """Create a short summary for LLM context (no base64)."""
+    return json.dumps({
+        "status": "pdf_generated",
+        "filename": pdf_data.get("filename", "document.pdf"),
+        "size_bytes": pdf_data.get("size_bytes", 0),
+        "order_name": pdf_data.get("order_name", ""),
+        "partner": pdf_data.get("partner", ""),
+        "amount_total": pdf_data.get("amount_total", 0),
+        "note": "PDF file will be sent as attachment automatically.",
+    }, ensure_ascii=False)
+
 
 class MasiAgent:
     MAX_TOOL_ROUNDS = 10
@@ -51,15 +85,29 @@ class MasiAgent:
             api_key=LLM_API_KEY,
             timeout=60.0,
         )
+        # Pending PDF files to send after response
+        self._pending_pdfs: list[dict] = []
+
+    def pop_pending_pdfs(self) -> list[dict]:
+        """Retrieve and clear pending PDF attachments."""
+        pdfs = self._pending_pdfs
+        self._pending_pdfs = []
+        return pdfs
 
     async def chat(self, messages: list[dict], telegram_user_id: int) -> str:
         tools = self.mcp.get_anthropic_tools()
         system = SYSTEM_PROMPT + f"\n\nTelegram user ID hiện tại: {telegram_user_id}"
         msgs = [m.copy() for m in messages]
 
+        # Clear pending PDFs for this request
+        self._pending_pdfs = []
+
         # Fast path: known slash commands → call MCP directly, then 1 LLM call to format
         last_msg = msgs[-1]["content"] if msgs else ""
         cmd = last_msg.strip().split()[0] if last_msg.strip() else ""
+        # Strip @botname suffix (e.g. "/kpi@hdxthanhtt4bot" → "/kpi")
+        if "@" in cmd:
+            cmd = cmd.split("@")[0]
 
         if cmd in COMMAND_TOOL_MAP:
             return await self._fast_command(cmd, system, telegram_user_id, tools)
@@ -83,7 +131,6 @@ class MasiAgent:
                 return f"🚫 {reason}"
         except Exception as e:
             logger.warning("Permission check failed for %s: %s", cmd, e)
-            # Continue anyway — don't block on permission errors
 
         # Step 2: Call the actual MCP tool directly
         logger.info("Fast path: %s → %s(%s)", cmd, tool_name, tool_args)
@@ -160,6 +207,16 @@ class MasiAgent:
                     result = await self.mcp.call_tool(block.name, block.input)
                     if not isinstance(result, str):
                         result = json.dumps(result, ensure_ascii=False, default=str)
+
+                    # Intercept PDF results — save file, send summary to LLM
+                    if block.name in PDF_TOOLS:
+                        pdf_data = _extract_pdf(result)
+                        if pdf_data:
+                            self._pending_pdfs.append(pdf_data)
+                            result = _pdf_summary(pdf_data)
+                            logger.info("PDF intercepted: %s (%d bytes)",
+                                        pdf_data.get("filename"), pdf_data.get("size_bytes", 0))
+
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,

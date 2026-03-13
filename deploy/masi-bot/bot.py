@@ -6,6 +6,8 @@ Uses python-telegram-bot v21.x (fully async).
 """
 
 import asyncio
+import base64
+import io
 import logging
 
 from telegram import Update
@@ -280,6 +282,9 @@ async def keep_typing(chat, stop_event: asyncio.Event):
 async def handle_message_internal(update: Update, text: str):
     user_id = update.effective_user.id
 
+    # Debug: log exact input and history size
+    logger.info("MSG_IN user=%s text=%r history_before=%d", user_id, text, len(get_history(user_id)))
+
     # Add user message to history
     add_to_history(user_id, "user", text)
 
@@ -289,12 +294,34 @@ async def handle_message_internal(update: Update, text: str):
 
     try:
         history = get_history(user_id)
+        logger.info("HISTORY_SENT user=%s len=%d last3=%s", user_id, len(history),
+                     [m["content"][:60] for m in history[-3:]])
         response = await agent.chat(list(history), telegram_user_id=user_id)
 
         add_to_history(user_id, "assistant", response)
         stop_typing.set()
         await typing_task
         await send_long_message(update, response)
+
+        # Send any pending PDF files as Telegram documents
+        for pdf_data in agent.pop_pending_pdfs():
+            try:
+                pdf_bytes = base64.b64decode(pdf_data["pdf_base64"])
+                filename = pdf_data.get("filename", "document.pdf")
+                caption = f"📄 {filename}"
+                if pdf_data.get("order_name"):
+                    caption += f" — {pdf_data['order_name']}"
+                if pdf_data.get("amount_total"):
+                    caption += f" ({pdf_data['amount_total']:,.0f} VND)"
+                await update.message.reply_document(
+                    document=io.BytesIO(pdf_bytes),
+                    filename=filename,
+                    caption=caption,
+                )
+                logger.info("PDF sent: %s (%d bytes)", filename, len(pdf_bytes))
+            except Exception as e:
+                logger.error("Failed to send PDF: %s", e)
+                await update.message.reply_text(f"❌ Không gửi được file PDF: {e}")
     except Exception as e:
         stop_typing.set()
         await typing_task

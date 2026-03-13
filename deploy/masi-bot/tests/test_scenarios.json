@@ -1,0 +1,377 @@
+{
+  "api_base": "http://103.72.97.51:8300",
+  "scenarios": [
+    {
+      "command": "/kpi",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_kpi",
+          "steps": ["/kpi"],
+          "expect": {"path": "fast", "max_ms": 3000, "must_contain": ["pipeline", "doanh thu", "leads"], "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/morning_brief",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_morning_brief",
+          "steps": ["/morning_brief"],
+          "expect": {"path": "fast", "max_ms": 3000, "must_contain_any": ["brief", "tổng", "hôm nay", "pipeline", "doanh"], "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/pipeline",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_pipeline",
+          "steps": ["/pipeline"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/doanhso_homnay",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_doanhso",
+          "steps": ["/doanhso_homnay"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/brief_hunter",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_hunter",
+          "steps": ["/brief_hunter"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/brief_farmer",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_farmer",
+          "steps": ["/brief_farmer"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/brief_ar",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_ar",
+          "steps": ["/brief_ar"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/brief_cash",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_cash",
+          "steps": ["/brief_cash"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/ceo_alert",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_ceo_alert",
+          "steps": ["/ceo_alert"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/hunter_today",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_hunter_today",
+          "steps": ["/hunter_today"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/hunter_sla",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_hunter_sla",
+          "steps": ["/hunter_sla"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/hunter_quotes",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_hunter_quotes",
+          "steps": ["/hunter_quotes"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/hunter_first_orders",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_hunter_first_orders",
+          "steps": ["/hunter_first_orders"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/hunter_sources",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_hunter_sources",
+          "steps": ["/hunter_sources"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/khachmoi_homnay",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_khachmoi",
+          "steps": ["/khachmoi_homnay"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/farmer_today",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_farmer_today",
+          "steps": ["/farmer_today"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/farmer_reorder",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_farmer_reorder",
+          "steps": ["/farmer_reorder"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/farmer_sleeping",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_farmer_sleeping",
+          "steps": ["/farmer_sleeping"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/farmer_vip",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_farmer_vip",
+          "steps": ["/farmer_vip"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/farmer_ar",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_farmer_ar",
+          "steps": ["/farmer_ar"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/farmer_retention",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_farmer_retention",
+          "steps": ["/farmer_retention"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/congno_denhan",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_congno_denhan",
+          "steps": ["/congno_denhan"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/congno_quahan",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_congno_quahan",
+          "steps": ["/congno_quahan"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/task_quahan",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_task_quahan",
+          "steps": ["/task_quahan"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/midday",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_midday",
+          "steps": ["/midday"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/eod",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_eod",
+          "steps": ["/eod"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/credit",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_credit",
+          "steps": ["/credit"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/quote",
+      "path": "llm",
+      "tests": [
+        {
+          "name": "quote_with_id",
+          "steps": ["/quote 1"],
+          "expect": {"max_ms": 30000, "must_contain_any": ["SO", "S00001", "báo giá", "quote", "sale order"], "no_error": true}
+        },
+        {
+          "name": "quote_multi_turn",
+          "steps": ["/quote", "1"],
+          "expect": {"max_ms": 30000, "must_contain_any": ["SO", "S00001", "báo giá", "quote", "sale order"], "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/invoice",
+      "path": "llm",
+      "tests": [
+        {
+          "name": "invoice_with_id",
+          "steps": ["/invoice 1"],
+          "expect": {"max_ms": 30000, "must_contain_any": ["hóa đơn", "invoice", "INV"], "no_error": true}
+        },
+        {
+          "name": "invoice_multi_turn",
+          "steps": ["/invoice", "1"],
+          "expect": {"max_ms": 30000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/findcustomer",
+      "path": "llm",
+      "tests": [
+        {
+          "name": "find_with_name",
+          "steps": ["/findcustomer ABC"],
+          "expect": {"max_ms": 30000, "no_error": true}
+        },
+        {
+          "name": "find_multi_turn",
+          "steps": ["/findcustomer", "ABC"],
+          "expect": {"max_ms": 30000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/masi",
+      "path": "llm",
+      "tests": [
+        {
+          "name": "show_menu",
+          "steps": ["/masi"],
+          "expect": {"max_ms": 30000, "must_contain_any": ["menu", "lệnh", "command", "kpi", "pipeline"], "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "freeform",
+      "path": "llm",
+      "tests": [
+        {
+          "name": "natural_language_query",
+          "steps": ["hôm nay có bao nhiêu lead mới?"],
+          "expect": {"max_ms": 30000, "no_error": true}
+        },
+        {
+          "name": "context_continuity",
+          "steps": ["/kpi", "giải thích số pipeline"],
+          "expect": {"max_ms": 30000, "must_contain_any": ["pipeline", "Pipeline"], "no_error": true}
+        }
+      ]
+    }
+  ]
+}

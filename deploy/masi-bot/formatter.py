@@ -120,7 +120,9 @@ def format_ceo_alert(raw: str) -> str:
         if isinstance(a, dict):
             sev = a.get("severity", a.get("type", "info"))
             icon = "🔴" if "critical" in str(sev) else "🟡" if "warning" in str(sev) else "⚠️"
-            msg = a.get("message", a.get("title", a.get("detail", str(a))))
+            msg = a.get("summary", a.get("message", a.get("title", a.get("detail", ""))))
+            if not msg:
+                msg = str(a)
             lines.append(f"{icon} {msg[:150]}")
         else:
             lines.append(f"⚠️ {a}")
