@@ -84,16 +84,17 @@ Lightweight Telegram bot replacing OpenClaw — direct MCP integration, template
 - **Deploy**: Systemd service on Odoo server (`/opt/masi-bot/`, `masi-bot.service`)
 - **Model**: Qwen 3.5 Plus via Alibaba Anthropic-compatible API
 - **Telegram Bot**: `@hdxthanhtt4bot` (Bot 1)
-- **Whitelist**: `2048339435` (CEO), `1481072032` (Hunter Lead)
+- **Whitelist**: `2048339435` (CEO), `1481072032` (Hunter Lead), `5001000001` (Farmer Lead)
 - **Performance**: Slash commands < 1s (template formatter), free-form chat ~10s (LLM)
 - **Files**:
   - `bot.py` — Telegram handler, RBAC, conversation memory, HTML formatting
   - `agent.py` — LLM tool-calling loop + fast path (direct MCP → template)
   - `mcp_client.py` — MCP SSE client, tool discovery, persistent connection
   - `formatter.py` — Python template formatters for 27 slash commands (no LLM)
-  - `config.py` — env vars, system prompt, whitelist
-- **33 slash commands** registered in Telegram menu
+  - `config.py` — env vars, system prompt, whitelist, TEST_USERS dict
+- **34 slash commands** registered in Telegram menu (includes `/what_changed` stub)
 - **51 MCP tools** auto-discovered at startup
+- **Context injection**: `_active_contexts` dict per user persists entity (partner/order/invoice) across turns — fixes /findcustomer drill-down context drift
 
 ### How it works
 1. **Slash commands** (`/kpi`, `/morning_brief`, etc.): Permission check → MCP tool call → Python template format → Telegram HTML. No LLM needed. Sub-second response.
@@ -198,15 +199,12 @@ Root cause: OpenClaw template validation strips non-standard keys from JSON,
 so these must be set via CLI after config generation.
 ```
 
-## E2E Test Suite (Playwright)
+## E2E Test Suite
 
-Playwright headless browser tests against live Odoo server.
-
-### Location
+### Odoo Web UI Tests (Playwright headless browser)
 - `tests/e2e/test_e2e_full.py` — 27 tests across 6 suites
 - `tests/__init__.py`, `tests/e2e/__init__.py` — package markers
 
-### Suites
 | Suite | Tests | Coverage |
 |-------|-------|----------|
 | 1 — Welcome Page | 6 | Each role sees role badge, feature cards, quick links |
@@ -216,14 +214,52 @@ Playwright headless browser tests against live Odoo server.
 | 5 — Dashboard KPIs | 3 | CEO sees /dashboard, non-CEO redirected to /welcome |
 | 6 — Command Center | 3 | Command Center menu visibility, masios.telegram_user accessible |
 
-### Run
 ```bash
 # Requires: pip install playwright && python -m playwright install chromium
 python3 tests/e2e/test_e2e_full.py
 ```
+**Note:** Run after 45s+ gap — Odoo workers (2 CPU, 3.8GB) need cooldown. Screenshots → `test_screenshots/` on failure.
 
-**Note:** Run after a 45s+ gap since last test run — Odoo workers (2 CPU, 3.8GB) need cooldown.
-Results: 27/27 PASS on fresh server. Screenshots saved to `test_screenshots/` on failure.
+### Telegram Bot API Tests (test_server port 8300)
+Three additional suites calling the masi-bot REST API directly (no browser, stdlib urllib only):
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `tests/e2e/test_bot_commands.py` | 27 | All fast-path commands, CEO role, keyword + timing check |
+| `tests/e2e/test_bot_rbac.py` | 27 | Full RBAC matrix per spec v1.1 (allowed + blocked per role) |
+| `tests/e2e/test_bot_multiturn.py` | 5 | /quote→number, /invoice→number, /findcustomer drill-down, ok-guard, morning_brief drill |
+
+```bash
+python3 tests/e2e/test_bot_commands.py
+python3 tests/e2e/test_bot_rbac.py
+python3 tests/e2e/test_bot_multiturn.py
+```
+**Prerequisite:** masi-bot service running on server (port 8300 accessible).
+
+### Unit Tests
+- `deploy/masi-bot/tests/test_context_injection.py` — 6 unit tests for `_inject_context` + `_extract_entity_from_tool_result`
+```bash
+cd deploy/masi-bot && python -m pytest tests/test_context_injection.py -v
+```
+
+### RBAC Permission Matrix (per Spec v1.1)
+| Command | CEO | Hunter | Farmer | Finance | Ops/PM | Admin |
+|---------|:---:|:------:|:------:|:-------:|:------:|:-----:|
+| morning_brief | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| ceo_alert | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| doanhso_homnay | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| brief_hunter | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| brief_farmer | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| brief_ar | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| brief_cash | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| hunter_today/sla/quotes/etc | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| farmer_today/reorder/etc | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| congno_denhan | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| congno_quahan | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| task_quahan | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| midday / eod | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+
+Stored in Odoo: `masios.telegram_role` records (id 1-6).
 
 ### Test Users
 | Role | Login | Password |
