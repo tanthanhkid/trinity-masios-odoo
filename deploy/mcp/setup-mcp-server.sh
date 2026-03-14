@@ -22,6 +22,21 @@ cat > /opt/odoo/mcp-server/server.py << 'SERVEREOF'
 PLACEHOLDER_WILL_BE_REPLACED
 SERVEREOF
 
+# Create credentials file if it doesn't exist
+if [ ! -f /etc/odoo-mcp/credentials ]; then
+    mkdir -p /etc/odoo-mcp
+    cat > /etc/odoo-mcp/credentials << 'CREDEOF'
+ODOO_URL=http://127.0.0.1:8069
+ODOO_DB=odoo
+ODOO_USERNAME=admin
+ODOO_PASSWORD=CHANGE_ME
+MCP_API_TOKEN=
+CREDEOF
+    chown odoo:odoo /etc/odoo-mcp/credentials
+    chmod 600 /etc/odoo-mcp/credentials
+    echo "  ⚠️  Edit /etc/odoo-mcp/credentials with real password before starting!"
+fi
+
 echo "[3/4] Installing systemd service..."
 cat > /etc/systemd/system/odoo-mcp.service << 'SVCEOF'
 [Unit]
@@ -31,13 +46,12 @@ Wants=odoo.service
 
 [Service]
 Type=simple
-User=root
+User=odoo
+Group=odoo
 WorkingDirectory=/opt/odoo/mcp-server
-Environment=ODOO_URL=http://127.0.0.1:8069
-Environment=ODOO_DB=odoo
-Environment=ODOO_USERNAME=admin
-Environment=ODOO_PASSWORD=admin
-ExecStart=/root/.local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --port 8200
+# Credentials in a restricted file (chmod 600, owned by odoo)
+EnvironmentFile=/etc/odoo-mcp/credentials
+ExecStart=/root/.local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --host 127.0.0.1 --port 8200
 Restart=on-failure
 RestartSec=5
 

@@ -228,19 +228,19 @@ Results: 27/27 PASS on fresh server. Screenshots saved to `test_screenshots/` on
 ### Test Users
 | Role | Login | Password |
 |------|-------|----------|
-| CEO | admin | admin |
-| Hunter Lead | hung.hunter@masibio.vn | masios2024 |
-| Farmer Lead | mai.farmer@masibio.vn | masios2024 |
-| Finance | phuc.finance@masibio.vn | masios2024 |
-| Ops/PM | dat.ops@masibio.vn | masios2024 |
-| Admin/Tech | tung.admin@masibio.vn | masios2024 |
+| CEO | admin | (set via ODOO_ADMIN_PASSWORD env var) |
+| Hunter Lead | hung.hunter@masibio.vn | (set via ODOO_TEST_PASSWORD env var) |
+| Farmer Lead | mai.farmer@masibio.vn | (set via ODOO_TEST_PASSWORD env var) |
+| Finance | phuc.finance@masibio.vn | (set via ODOO_TEST_PASSWORD env var) |
+| Ops/PM | dat.ops@masibio.vn | (set via ODOO_TEST_PASSWORD env var) |
+| Admin/Tech | tung.admin@masibio.vn | (set via ODOO_TEST_PASSWORD env var) |
 
 ## Conventions
 - **SSH platform rules**:
   - **macOS**: Use `sshpass` + `ssh` (native, fast) — install via `brew install hudochenkov/sshpass/sshpass`
   - **Windows**: Use `paramiko` (Python) — `sshpass` fails on Windows due to TTY issues
   - Odoo server: `ssh -p 24700 root@103.72.97.51` (no password needed)
-  - Mac Studio: `sshpass -p '19112003' ssh masios@100.81.203.48` (macOS) or `paramiko.connect('100.81.203.48', username='masios', password='19112003')` (Windows)
+  - Mac Studio: `sshpass -p '$MAC_STUDIO_PASSWORD' ssh masios@100.81.203.48` (macOS) or `paramiko.connect('100.81.203.48', username='masios', password=os.environ['MAC_STUDIO_PASSWORD'])` (Windows)
   - For file transfers: `scp` (macOS) or `sftp = ssh.open_sftp()` (Windows/paramiko)
 - Always backup before destructive operations
 - Log errors and fixes to Smart Memory SQLite
