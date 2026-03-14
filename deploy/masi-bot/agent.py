@@ -208,9 +208,10 @@ class MasiAgent:
         # Extract partner name from various LLM response formats
         partner_name = None
         for pattern in [
-            r'(?:Tên|Khách hàng|Customer|KH)[:\s]*(?:<[^>]*>)*\*{0,2}([^*\n<(]+)',
-            r'\*\*([^*]+)\*\*\s*(?:\(|partner_id)',
-            r'(?:tìm thấy|found)[:\s]+(?:<[^>]*>)*([^\n<(]+)',
+            r'<b>(Công ty[^<]+|[^<]{5,50})</b>\s*\n\s*<code>',  # <b>Name</b>\n<code>id</code>
+            r'\*\*([^*]{3,50})\*\*\s*(?:\(|partner_id|<code>)',   # **Name** (partner_id=N)
+            r'(?:Tên|KH|khách hàng|customer)[:\s]*(?:<[^>]*>)*([A-ZĐÁÂĂÊÔƠƯÀẢÃẠĂẮẶẦẨẪẬÉÊẾỆÍÌỊÓÔƠỜỚỢÙÚƯỤ][^*\n<(]{2,50})',
+            r'(?:tìm thấy|found|kết quả)[:\s]*\n\s*[•\-]\s*(?:<[^>]*>)*([^<\n]{3,60})',
         ]:
             m = re.search(pattern, prev_assistant, re.IGNORECASE)
             if m:
