@@ -29,33 +29,37 @@ class DashboardController(http.Controller):
     def _get_kpis(self):
         today = datetime.now()
         first_day = today.replace(day=1)
+        first_day_str = first_day.strftime('%Y-%m-%d')
 
-        # Pipeline value (active opportunities)
-        leads = request.env['crm.lead'].search([
-            ('type', '=', 'opportunity'),
-            ('active', '=', True),
-        ])
-        pipeline_value = sum(leads.mapped('expected_revenue'))
+        # Pipeline value (active opportunities) — aggregate in DB
+        pipeline_data = request.env['crm.lead'].read_group(
+            [('type', '=', 'opportunity'), ('active', '=', True)],
+            ['expected_revenue:sum'],
+            [],
+        )
+        pipeline_value = pipeline_data[0]['expected_revenue'] or 0 if pipeline_data else 0
 
-        # Revenue this month (paid invoices)
-        invoices = request.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('state', '=', 'posted'),
-            ('invoice_date', '>=', first_day.strftime('%Y-%m-%d')),
-        ])
-        monthly_revenue = sum(invoices.mapped('amount_total'))
+        # Revenue this month (posted invoices) — aggregate in DB
+        revenue_data = request.env['account.move'].read_group(
+            [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
+             ('invoice_date', '>=', first_day_str)],
+            ['amount_total:sum'],
+            [],
+        )
+        monthly_revenue = revenue_data[0]['amount_total'] or 0 if revenue_data else 0
 
-        # Total outstanding debt
-        unpaid = request.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('state', '=', 'posted'),
-            ('amount_residual', '>', 0),
-        ])
-        total_debt = sum(unpaid.mapped('amount_residual'))
+        # Total outstanding debt — aggregate in DB
+        debt_data = request.env['account.move'].read_group(
+            [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
+             ('amount_residual', '>', 0)],
+            ['amount_residual:sum'],
+            [],
+        )
+        total_debt = debt_data[0]['amount_residual'] or 0 if debt_data else 0
 
         # New leads this month
         new_leads = request.env['crm.lead'].search_count([
-            ('create_date', '>=', first_day.strftime('%Y-%m-%d')),
+            ('create_date', '>=', first_day_str),
         ])
 
         return {
