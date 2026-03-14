@@ -106,12 +106,12 @@ class MasiAgent:
             api_key=LLM_API_KEY,
             timeout=60.0,
         )
-        self._pending_pdfs: list[dict] = []
+        # Per-user PDF queues to prevent cross-user PDF leaks
+        self._pending_pdfs: dict[int, list[dict]] = {}
 
-    def pop_pending_pdfs(self) -> list[dict]:
-        """Retrieve and clear pending PDF attachments."""
-        pdfs = self._pending_pdfs
-        self._pending_pdfs = []
+    def pop_pending_pdfs(self, user_id: int = 0) -> list[dict]:
+        """Retrieve and clear pending PDF attachments for a specific user."""
+        pdfs = self._pending_pdfs.pop(user_id, [])
         return pdfs
 
     async def chat(self, messages: list[dict], telegram_user_id: int) -> str:
@@ -119,7 +119,7 @@ class MasiAgent:
         system = SYSTEM_PROMPT + f"\n\nTelegram user ID hiện tại: {telegram_user_id}"
         msgs = [m.copy() for m in messages]
 
-        self._pending_pdfs = []
+        self._pending_pdfs[telegram_user_id] = []
 
         # Fast path: known slash commands
         last_msg = msgs[-1]["content"] if msgs else ""
@@ -294,7 +294,8 @@ class MasiAgent:
                 reason = perm.get("reason", "Không có quyền")
                 return f"🚫 {reason}"
         except Exception as e:
-            logger.warning("Permission check failed for %s: %s", cmd, e)
+            logger.error("Permission check failed for %s (fail-closed): %s", cmd, e)
+            return "⚠️ Không thể kiểm tra quyền. Vui lòng thử lại sau."
 
         # Step 2: Call MCP tool
         logger.info("Fast path: %s → %s(%s)", cmd, tool_name, tool_args)
@@ -302,7 +303,8 @@ class MasiAgent:
             result = await self.mcp.call_tool(tool_name, tool_args)
         except Exception as e:
             logger.error("Fast path tool %s failed: %s", tool_name, e)
-            return f"❌ Lỗi gọi tool {tool_name}: {e}"
+            logger.error("Fast path tool %s error detail: %s", tool_name, e, exc_info=True)
+            return f"❌ Lỗi gọi tool {tool_name}. Vui lòng thử lại."
 
         # Step 3: Python template format (no LLM!)
         formatted = format_command(cmd, result)
@@ -399,7 +401,7 @@ class MasiAgent:
                     if block.name in PDF_TOOLS:
                         pdf_data = _extract_pdf(result)
                         if pdf_data:
-                            self._pending_pdfs.append(pdf_data)
+                            self._pending_pdfs.setdefault(user_id, []).append(pdf_data)
                             result = _pdf_summary(pdf_data)
                             logger.info("PDF intercepted: %s (%d bytes)",
                                         pdf_data.get("filename"), pdf_data.get("size_bytes", 0))

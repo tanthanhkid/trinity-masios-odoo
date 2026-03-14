@@ -2,11 +2,16 @@
 Odoo Cleanup Script - Uninstall unnecessary modules and hide menus.
 Connects via XML-RPC from Windows, no SSH needed.
 """
+import os
 import xmlrpc.client
 import time
 
-url = "http://103.72.97.51:8069"
-db, user, pw = "odoo", "admin", "admin"
+url = os.environ.get("ODOO_URL", "http://127.0.0.1:8069")
+db = os.environ.get("ODOO_DB", "odoo")
+user = os.environ.get("ODOO_USERNAME", "admin")
+pw = os.environ.get("ODOO_PASSWORD", "")
+if not pw:
+    raise SystemExit("ERROR: Set ODOO_PASSWORD env var before running this script")
 
 print("=" * 60)
 print("ODOO CLEANUP SCRIPT")

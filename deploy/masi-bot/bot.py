@@ -34,25 +34,51 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 mcp_client: OdooMCPClient = None
 agent: MasiAgent = None
-conversations: dict[int, list] = {}  # user_id -> message history
 
 MAX_HISTORY = 20
+MAX_CONVERSATIONS = 200  # Max concurrent user conversations in memory
+CONVERSATION_TTL = 3600  # 1 hour TTL for inactive conversations
+
+# Each entry: {"messages": list, "last_active": float}
+conversations: dict[int, dict] = {}
 
 
 # ---------------------------------------------------------------------------
 # Conversation memory helpers
 # ---------------------------------------------------------------------------
+def _cleanup_stale_conversations():
+    """Remove conversations older than TTL and trim to max size."""
+    import time
+    now = time.time()
+    stale = [uid for uid, data in conversations.items()
+             if now - data["last_active"] > CONVERSATION_TTL]
+    for uid in stale:
+        del conversations[uid]
+    # If still over limit, remove oldest
+    if len(conversations) > MAX_CONVERSATIONS:
+        sorted_uids = sorted(conversations, key=lambda u: conversations[u]["last_active"])
+        for uid in sorted_uids[:len(conversations) - MAX_CONVERSATIONS]:
+            del conversations[uid]
+
+
 def get_history(user_id: int) -> list:
     if user_id not in conversations:
-        conversations[user_id] = []
-    return conversations[user_id]
+        conversations[user_id] = {"messages": [], "last_active": 0}
+    return conversations[user_id]["messages"]
 
 
 def add_to_history(user_id: int, role: str, content: str):
-    history = get_history(user_id)
+    import time
+    if user_id not in conversations:
+        conversations[user_id] = {"messages": [], "last_active": 0}
+    conversations[user_id]["last_active"] = time.time()
+    history = conversations[user_id]["messages"]
     history.append({"role": role, "content": content})
     if len(history) > MAX_HISTORY:
-        conversations[user_id] = history[-MAX_HISTORY:]
+        conversations[user_id]["messages"] = history[-MAX_HISTORY:]
+    # Periodically clean up stale conversations
+    if len(conversations) > MAX_CONVERSATIONS:
+        _cleanup_stale_conversations()
 
 
 # ---------------------------------------------------------------------------
@@ -78,22 +104,8 @@ async def check_whitelist(update: Update) -> bool:
 # ---------------------------------------------------------------------------
 async def send_long_message(update: Update, text: str):
     """Split and send messages that exceed Telegram's 4096 char limit.
-    Tries MarkdownV2 first, falls back to HTML, then plain text."""
+    Tries HTML first, falls back to plain text."""
     import re
-
-    def escape_mdv2(t: str) -> str:
-        """Escape special chars for Telegram MarkdownV2, preserving **bold** and `code`."""
-        # First, protect bold and code markers
-        t = t.replace("**", "\x01BOLD\x01")
-        t = t.replace("`", "\x01CODE\x01")
-        # Escape all special chars
-        special = r'_[]()~>#+=|{}.!-'
-        for ch in special:
-            t = t.replace(ch, f"\\{ch}")
-        # Restore bold and code
-        t = t.replace("\x01BOLD\x01", "*")
-        t = t.replace("\x01CODE\x01", "`")
-        return t
 
     async def send_chunk(chunk: str):
         # Try HTML first (convert markdown if needed)
@@ -304,7 +316,7 @@ async def handle_message_internal(update: Update, text: str):
         await send_long_message(update, response)
 
         # Send any pending PDF files as Telegram documents
-        for pdf_data in agent.pop_pending_pdfs():
+        for pdf_data in agent.pop_pending_pdfs(user_id):
             try:
                 pdf_bytes = base64.b64decode(pdf_data["pdf_base64"])
                 filename = pdf_data.get("filename", "document.pdf")
@@ -326,8 +338,9 @@ async def handle_message_internal(update: Update, text: str):
         stop_typing.set()
         await typing_task
         logger.error("Error processing message: %s", e, exc_info=True)
+        # Don't leak internal error details to users
         await update.message.reply_text(
-            f"\u274c L\u1ed7i x\u1eed l\u00fd: {e}"
+            "\u274c L\u1ed7i h\u1ec7 th\u1ed1ng. Vui l\u00f2ng th\u1eed l\u1ea1i sau."
         )
 
 

@@ -26,11 +26,12 @@ from datetime import date, datetime, timedelta
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-BOT_TOKEN = "6449879315:AAHWnvBNYn6SJVJZj-jbvDb4cjafrmntgaI"
-ODOO_URL = "http://103.72.97.51:8069"
-ODOO_DB = "odoo"
-ODOO_USER = "admin"
-ODOO_PASS = "admin"
+import os
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+ODOO_URL = os.environ.get("ODOO_URL", "http://127.0.0.1:8069")
+ODOO_DB = os.environ.get("ODOO_DB", "odoo")
+ODOO_USER = os.environ.get("ODOO_USERNAME", "admin")
+ODOO_PASS = os.environ.get("ODOO_PASSWORD", "")
 
 # ─── Multi-recipient routing ─────────────────────────────────────────────────
 

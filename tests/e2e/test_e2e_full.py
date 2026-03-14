@@ -54,13 +54,16 @@ NAV_TIMEOUT    = 45_000   # ms — page navigation
 POST_NAV_WAIT  = 1.5      # seconds after navigation
 SUITE_PAUSE    = 4.0      # seconds between suites (let Odoo worker recover)
 
+_DEFAULT_PWD = os.environ.get("ODOO_TEST_PASSWORD", "masios2024")
+_ADMIN_PWD = os.environ.get("ODOO_ADMIN_PASSWORD", "admin")
+
 TEST_USERS = [
-    {"role": "CEO",         "login": "admin",                  "password": "admin"},
-    {"role": "Hunter Lead", "login": "hung.hunter@masibio.vn", "password": "masios2024"},
-    {"role": "Farmer Lead", "login": "mai.farmer@masibio.vn",  "password": "masios2024"},
-    {"role": "Finance",     "login": "phuc.finance@masibio.vn","password": "masios2024"},
-    {"role": "Ops/PM",      "login": "dat.ops@masibio.vn",     "password": "masios2024"},
-    {"role": "Admin/Tech",  "login": "tung.admin@masibio.vn",  "password": "masios2024"},
+    {"role": "CEO",         "login": "admin",                  "password": _ADMIN_PWD},
+    {"role": "Hunter Lead", "login": "hung.hunter@masibio.vn", "password": _DEFAULT_PWD},
+    {"role": "Farmer Lead", "login": "mai.farmer@masibio.vn",  "password": _DEFAULT_PWD},
+    {"role": "Finance",     "login": "phuc.finance@masibio.vn","password": _DEFAULT_PWD},
+    {"role": "Ops/PM",      "login": "dat.ops@masibio.vn",     "password": _DEFAULT_PWD},
+    {"role": "Admin/Tech",  "login": "tung.admin@masibio.vn",  "password": _DEFAULT_PWD},
 ]
 
 # Expected menu sets per role (as they appear in the Odoo navbar on /welcome)
@@ -500,7 +503,7 @@ class CreditControlSuite:
         context = await browser.new_context()
         page = await context.new_page()
         page.set_default_timeout(ACTION_TIMEOUT)
-        ok = await login(page, "admin", "admin")
+        ok = await login(page, "admin", _ADMIN_PWD)
         return context, page, ok
 
     async def _open_contacts_list(self, page: Page, search_term: str = "") -> bool:
@@ -734,7 +737,7 @@ class DashboardKPISuite:
         page = await context.new_page()
         page.set_default_timeout(ACTION_TIMEOUT)
         try:
-            ok = await login(page, "admin", "admin")
+            ok = await login(page, "admin", _ADMIN_PWD)
             if not ok:
                 return TestResult(name, False, "Login failed", int((time.time()-start)*1000))
 
@@ -770,7 +773,7 @@ class DashboardKPISuite:
         page = await context.new_page()
         page.set_default_timeout(ACTION_TIMEOUT)
         try:
-            ok = await login(page, "admin", "admin")
+            ok = await login(page, "admin", _ADMIN_PWD)
             if not ok:
                 return TestResult(name, False, "Login failed", int((time.time()-start)*1000))
 
@@ -863,7 +866,7 @@ class CommandCenterSuite:
         page = await context.new_page()
         page.set_default_timeout(ACTION_TIMEOUT)
         try:
-            ok = await login(page, "admin", "admin")
+            ok = await login(page, "admin", _ADMIN_PWD)
             if not ok:
                 return TestResult(name, False, "Login failed", int((time.time()-start)*1000))
 
@@ -899,7 +902,7 @@ class CommandCenterSuite:
         page = await context.new_page()
         page.set_default_timeout(ACTION_TIMEOUT)
         try:
-            ok = await login(page, "admin", "admin")
+            ok = await login(page, "admin", _ADMIN_PWD)
             if not ok:
                 return TestResult(name, False, "Login failed", int((time.time()-start)*1000))
 

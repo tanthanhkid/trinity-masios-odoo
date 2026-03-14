@@ -5,11 +5,12 @@ Wants=odoo.service
 
 [Service]
 Type=simple
-User=root
+User=odoo
+Group=odoo
 WorkingDirectory=/opt/odoo/mcp-server
-# Credentials in a restricted file (chmod 600, owned by root)
+# Credentials in a restricted file (chmod 600, owned by odoo)
 EnvironmentFile=/etc/odoo-mcp/credentials
-ExecStart=/root/.local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --host 0.0.0.0 --port 8200
+ExecStart=/root/.local/bin/uv run --with mcp python3 /opt/odoo/mcp-server/server.py --http --host 127.0.0.1 --port 8200
 Restart=on-failure
 RestartSec=5
 
