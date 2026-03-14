@@ -294,7 +294,8 @@ class MasiAgent:
                 reason = perm.get("reason", "Không có quyền")
                 return f"🚫 {reason}"
         except Exception as e:
-            logger.warning("Permission check failed for %s: %s", cmd, e)
+            logger.error("Permission check failed for %s (fail-closed): %s", cmd, e)
+            return "⚠️ Không thể kiểm tra quyền. Vui lòng thử lại sau."
 
         # Step 2: Call MCP tool
         logger.info("Fast path: %s → %s(%s)", cmd, tool_name, tool_args)
@@ -302,7 +303,8 @@ class MasiAgent:
             result = await self.mcp.call_tool(tool_name, tool_args)
         except Exception as e:
             logger.error("Fast path tool %s failed: %s", tool_name, e)
-            return f"❌ Lỗi gọi tool {tool_name}: {e}"
+            logger.error("Fast path tool %s error detail: %s", tool_name, e, exc_info=True)
+            return f"❌ Lỗi gọi tool {tool_name}. Vui lòng thử lại."
 
         # Step 3: Python template format (no LLM!)
         formatted = format_command(cmd, result)
