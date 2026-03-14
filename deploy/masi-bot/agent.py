@@ -112,6 +112,11 @@ class MasiAgent:
         if cmd in COMMAND_TOOL_MAP:
             return await self._fast_command(cmd, system, telegram_user_id, tools)
 
+        # Quick reply guard: "ok", "cảm ơn", etc. → canned response, no LLM
+        quick = self._quick_reply(last_msg)
+        if quick:
+            return quick
+
         # Context injection: if user sends bare number/word after a pending command,
         # prepend context so LLM reliably connects it to the previous flow
         msgs = self._inject_context(msgs)
@@ -119,15 +124,38 @@ class MasiAgent:
         # Normal path: full tool-calling loop
         return await self._tool_loop(msgs, system, tools, telegram_user_id)
 
+    @staticmethod
+    def _quick_reply(msg: str) -> str | None:
+        """Return canned response for simple acknowledgements. Skip LLM entirely."""
+        import re
+        normalized = msg.strip().lower().rstrip("!.?")
+        # Match common acknowledgements
+        patterns = [
+            r'^(ok|oke|okie|oki)$',
+            r'^(ok )?(cảm ơn|cam on|thanks|thank you|tks).*$',
+            r'^(ok )?(được rồi|dc rồi|dc roi|ok rồi)$',
+            r'^(tốt lắm|tốt|good|great|nice|hay)$',
+            r'^(ok )?(ghi nhận|noted)$',
+            r'^(bye|tạm biệt|hẹn gặp lại).*$',
+        ]
+        for p in patterns:
+            if re.match(p, normalized):
+                import random
+                replies = [
+                    "Dạ, nếu cần gì thêm cứ hỏi nhé! 😊",
+                    "Vâng ạ! Có gì cứ gọi nhé 👍",
+                    "Ok anh/chị! Chúc làm việc hiệu quả! 💪",
+                    "Dạ rồi ạ! 😊",
+                ]
+                return random.choice(replies)
+
     def _inject_context(self, msgs: list[dict]) -> list[dict]:
-        """If user sends a short reply (number/word) after bot asked for input,
-        rewrite the user message to include explicit context."""
+        """Inject context hints for short replies and drill-down questions."""
         if len(msgs) < 3:
             return msgs
 
         last_user = msgs[-1]["content"].strip()
-        # Only inject for short replies (bare numbers, single words)
-        if len(last_user) > 20 or last_user.startswith("/"):
+        if last_user.startswith("/"):
             return msgs
 
         # Find last assistant message
@@ -142,27 +170,47 @@ class MasiAgent:
 
         pa = prev_assistant.lower()
 
-        # Detect what the bot was asking for and inject context
-        context_map = [
-            (["sale order", "so ", "báo giá", "quote", "số so"],
-             f"User đang trong flow /quote. Họ trả lời '{last_user}' = Sale Order ID. Gọi odoo_sale_order_summary(order_id={last_user}) NGAY."),
-            (["invoice", "hóa đơn", "số invoice", "số hđ"],
-             f"User đang trong flow /invoice. Họ trả lời '{last_user}' = Invoice ID. Gọi odoo_invoice_summary(invoice_id={last_user}) NGAY."),
-            (["tên khách", "khách hàng", "findcustomer", "tên kh"],
-             f"User đang trong flow /findcustomer. Họ trả lời '{last_user}' = tên khách hàng cần tìm. Gọi odoo_search_read ngay."),
-            (["id khách", "partner", "credit"],
-             f"User đang trong flow kiểm tra credit. Họ trả lời '{last_user}' = partner ID. Gọi tool ngay."),
-        ]
+        # --- 1. Short reply injection (bare numbers, single words <=20 chars) ---
+        if len(last_user) <= 20:
+            context_map = [
+                (["sale order", "so ", "báo giá", "quote", "số so"],
+                 f"User đang trong flow /quote. Họ trả lời '{last_user}' = Sale Order ID. Gọi odoo_sale_order_summary(order_id={last_user}) NGAY."),
+                (["invoice", "hóa đơn", "số invoice", "số hđ"],
+                 f"User đang trong flow /invoice. Họ trả lời '{last_user}' = Invoice ID. Gọi odoo_invoice_summary(invoice_id={last_user}) NGAY."),
+                (["tên khách", "khách hàng", "findcustomer", "tên kh"],
+                 f"User đang trong flow /findcustomer. Họ trả lời '{last_user}' = tên khách hàng cần tìm. Gọi odoo_search_read ngay."),
+                (["id khách", "partner", "credit"],
+                 f"User đang trong flow kiểm tra credit. Họ trả lời '{last_user}' = partner ID. Gọi tool ngay."),
+            ]
+            for keywords, context_hint in context_map:
+                if any(kw in pa for kw in keywords):
+                    msgs = list(msgs)
+                    msgs[-1] = {"role": "user", "content": f"[CONTEXT: {context_hint}]\n\n{last_user}"}
+                    logger.info("Context injected (short): '%s'", last_user)
+                    return msgs
 
-        for keywords, context_hint in context_map:
-            if any(kw in pa for kw in keywords):
-                msgs = list(msgs)  # copy
-                # Inject a system-like context as a preceding user message
-                msgs[-1] = {
-                    "role": "user",
-                    "content": f"[CONTEXT: {context_hint}]\n\n{last_user}",
-                }
-                logger.info("Context injected for short reply '%s': %s", last_user, context_hint[:80])
+        # --- 2. Drill-down injection: follow-up questions about a found entity ---
+        import re
+        # Detect if previous assistant message mentioned a specific customer/partner/SO/invoice
+        partner_match = re.search(r'(?:ID[:\s=]*|partner.*?ID[:\s=]*)(\d+)', prev_assistant)
+        partner_name_match = re.search(r'(?:Tên|Khách hàng|Customer)[:\s]*\*?\*?([^*\n(]+)', prev_assistant)
+
+        if partner_match and len(last_user) <= 50:
+            partner_id = partner_match.group(1)
+            partner_name = partner_name_match.group(1).strip() if partner_name_match else "?"
+            # Check if the follow-up looks like a drill-down (not a new command or search)
+            drill_keywords = ["lịch sử", "đơn hàng", "nợ", "credit", "thanh toán", "mua gì",
+                              "chi tiết", "thông tin", "xếp hạng", "revenue", "doanh thu",
+                              "nhắc nợ", "gửi nhắc", "liên hệ", "dispute", "escalate"]
+            if any(kw in last_user.lower() for kw in drill_keywords):
+                context_hint = (
+                    f"User đang xem KH '{partner_name}' (partner_id={partner_id}). "
+                    f"Câu hỏi '{last_user}' là DRILL-DOWN về KH này, KHÔNG phải tìm KH mới. "
+                    f"Dùng partner_id={partner_id} hoặc tên '{partner_name}' làm filter."
+                )
+                msgs = list(msgs)
+                msgs[-1] = {"role": "user", "content": f"[CONTEXT: {context_hint}]\n\n{last_user}"}
+                logger.info("Context injected (drill-down): partner_id=%s, msg='%s'", partner_id, last_user)
                 return msgs
 
         return msgs
