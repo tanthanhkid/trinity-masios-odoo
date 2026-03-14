@@ -133,6 +133,10 @@ class MasiAgent:
             self._active_contexts.pop(telegram_user_id, None)
             return await self._fast_command(cmd, system, telegram_user_id, tools)
 
+        # Stub: /what_changed (no read audit tool yet)
+        if cmd == "/what_changed":
+            return "🚧 <b>/what_changed</b> — đang phát triển\n\nTính năng xem lịch sử thay đổi dữ liệu sẽ có trong phiên bản tiếp theo."
+
         # Clear active context on any slash command (not just mapped ones)
         if last_msg.strip().startswith("/"):
             self._active_contexts.pop(telegram_user_id, None)

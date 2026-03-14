@@ -378,7 +378,7 @@ def main():
         "congno_denhan", "congno_quahan",
         "task_quahan", "midday", "eod",
         "kpi", "pipeline", "newlead", "newcustomer",
-        "quote", "invoice", "credit", "findcustomer",
+        "quote", "invoice", "credit", "findcustomer", "what_changed",
     ]
     for cmd in SLASH_COMMANDS:
         app.add_handler(CommandHandler(cmd, slash_command))
