@@ -13,7 +13,7 @@ TELEGRAM_WHITELIST = {
 # GLM-5 via Alibaba (Anthropic-compatible)
 LLM_BASE_URL = "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic"
 LLM_API_KEY = os.environ["ALIBABA_API_KEY"]
-LLM_MODEL = "qwen3.5-plus"
+LLM_MODEL = "qwen3-coder-next"
 
 # Odoo MCP Server
 MCP_SERVER_URL = os.environ.get("ODOO_MCP_URL", "http://103.72.97.51:8200/sse")
