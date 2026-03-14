@@ -629,6 +629,180 @@
           "note": "Emoji only — không crash"
         }
       ]
+    },
+    {
+      "command": "rbac_actions",
+      "description": "RBAC action permission tests per spec P-05",
+      "tests": [
+        {
+          "name": "ceo_can_mark_contacted",
+          "user_id": 2048339435,
+          "steps": ["đánh dấu đã liên hệ lead 1"],
+          "expect": {
+            "max_ms": 30000,
+            "must_contain_any": ["đã liên hệ", "✅", "cập nhật", "mark", "xác nhận", "ghi chú"],
+            "no_error": true
+          },
+          "note": "P-05: CEO can mark_contacted"
+        },
+        {
+          "name": "hunter_cannot_gan_dispute",
+          "user_id": 1481072032,
+          "steps": ["gắn dispute cho invoice 1"],
+          "expect": {
+            "max_ms": 10000,
+            "must_contain_any": ["🚫", "không có quyền", "chỉ Finance", "không được phép"],
+            "no_error": true
+          },
+          "note": "P-05: Hunter CANNOT gắn dispute — Finance only"
+        },
+        {
+          "name": "ceo_two_step_dispute_confirm",
+          "user_id": 2048339435,
+          "steps": [
+            "gắn dispute cho invoice 5 với lý do chờ xác nhận từ khách",
+            "có, xác nhận"
+          ],
+          "expect": {
+            "max_ms": 30000,
+            "must_contain_any": ["xác nhận", "dispute", "✅", "đã gắn", "ghi nhận"],
+            "no_error": true
+          },
+          "note": "P-05: CEO gắn dispute requires 2-step confirmation"
+        },
+        {
+          "name": "ceo_two_step_reassign_lead",
+          "user_id": 2048339435,
+          "steps": [
+            "chuyển lead 10 sang hunter khác",
+            "xác nhận chuyển"
+          ],
+          "expect": {
+            "max_ms": 30000,
+            "must_contain_any": ["chuyển", "owner", "✅", "xác nhận", "đổi owner", "ghi nhận"],
+            "no_error": true
+          },
+          "note": "Reassign lead requires 2-step confirmation"
+        }
+      ]
+    },
+    {
+      "command": "data_quality_gate",
+      "description": "T-01/T-02: Bot must show DATA ISSUE, not silently fail on bad data",
+      "tests": [
+        {
+          "name": "morning_brief_no_silent_fail",
+          "user_id": 2048339435,
+          "steps": ["/morning_brief"],
+          "expect": {
+            "max_ms": 5000,
+            "must_not_be_empty": true,
+            "no_error": true
+          },
+          "note": "T-01: /morning_brief must return content or explicit DATA ISSUE warning, never empty"
+        }
+      ]
+    },
+    {
+      "command": "drill_down_breadcrumb",
+      "description": "T-03: Drill-down trail — morning_brief -> hunter detail -> SLA detail",
+      "tests": [
+        {
+          "name": "ceo_3level_drill_trail",
+          "user_id": 2048339435,
+          "steps": [
+            "/morning_brief",
+            "hunter team hôm nay thế nào?",
+            "lead nào đang breach SLA?"
+          ],
+          "expect": {
+            "max_ms": 60000,
+            "must_contain_any_per_step": [
+              ["hunter", "farmer", "brief"],
+              ["hunter", "lead", "hôm nay", "sla"],
+              ["sla", "breach", "giờ", "lead", "chưa liên hệ"]
+            ],
+            "no_error": true
+          },
+          "note": "T-03: 3-level drill-down must maintain context at each level"
+        }
+      ]
+    },
+    {
+      "command": "sla_breach_h02",
+      "description": "H-02: SLA breach detection — leads >4h without first_touch",
+      "tests": [
+        {
+          "name": "hunter_sla_shows_breached_leads",
+          "user_id": 2048339435,
+          "steps": ["/hunter_sla"],
+          "expect": {
+            "max_ms": 15000,
+            "must_contain_any": ["sla", "giờ", "breach", "lead", "chưa", "liên hệ"],
+            "no_error": true
+          },
+          "note": "H-02: /hunter_sla must surface leads breached SLA window"
+        }
+      ]
+    },
+    {
+      "command": "ar_critical_overdue_a03",
+      "description": "A-03: Critical overdue AR (30+ days) — must show aging buckets",
+      "tests": [
+        {
+          "name": "congno_quahan_shows_30plus_bucket",
+          "user_id": 2048339435,
+          "steps": ["/congno_quahan"],
+          "expect": {
+            "max_ms": 10000,
+            "must_contain_any": ["quá hạn", "overdue", "ngày", "30", "61", "90", "bucket"],
+            "no_error": true
+          },
+          "note": "A-03: /congno_quahan must show 30+ day overdue bucket"
+        },
+        {
+          "name": "congno_quahan_mark_collection",
+          "user_id": 2048339435,
+          "steps": [
+            "/congno_quahan",
+            "đánh dấu đã nhắc nợ cho invoice đầu tiên"
+          ],
+          "expect": {
+            "max_ms": 30000,
+            "must_contain_any": ["đã nhắc", "✅", "ghi nhận", "cập nhật", "nhắc nợ"],
+            "no_error": true
+          },
+          "note": "A-04: Finance marks collection touch after viewing overdue"
+        }
+      ]
+    },
+    {
+      "command": "farmer_role_commands",
+      "description": "F-01/F-02: Farmer role commands with Farmer test user",
+      "tests": [
+        {
+          "name": "farmer_today_farmer_role",
+          "user_id": 5000000001,
+          "steps": ["/farmer_today"],
+          "expect": {
+            "max_ms": 5000,
+            "must_contain_any": ["farmer", "reorder", "sleeping", "vip", "hôm nay"],
+            "no_error": true
+          },
+          "note": "F-01: Farmer Lead can call /farmer_today"
+        },
+        {
+          "name": "farmer_reorder_farmer_role",
+          "user_id": 5000000001,
+          "steps": ["/farmer_reorder"],
+          "expect": {
+            "max_ms": 5000,
+            "must_contain_any": ["reorder", "expected", "ngày", "dự kiến", "khách"],
+            "no_error": true
+          },
+          "note": "F-01: Farmer Lead can call /farmer_reorder"
+        }
+      ]
     }
   ]
 }
