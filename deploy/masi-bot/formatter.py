@@ -400,12 +400,26 @@ def format_farmer_ar(raw: str) -> str:
     d = _safe_json(raw)
     lines = ["🌾 <b>FARMER AR</b>", ""]
 
-    customers = _val(d, "customers", "details", default=[])
-    total = _val(d, "total", "total_amount", default=0)
+    customers = _val(d, "top_debtors", "customers", "details", default=[])
+    total = _val(d, "total_receivable", "total", "total_amount", default=0)
     if total:
-        lines.append(f"💰 Tổng: <b>{_money(total)}</b> VND")
+        lines.append(f"💰 Tổng phải thu: <b>{_money(total)}</b> VND")
         lines.append("")
 
+    # Aging buckets
+    aging = d.get("aging_buckets", {})
+    if aging and isinstance(aging, dict):
+        lines.append("📅 <b>Theo tuổi nợ:</b>")
+        bucket_labels = [("current", "Hiện tại"), ("1_30", "1-30 ngày"), ("31_60", "31-60 ngày"),
+                         ("61_90", "61-90 ngày"), ("90_plus", "90+ ngày")]
+        for key, label in bucket_labels:
+            val = aging.get(key, 0)
+            if val:
+                lines.append(f"  • {label}: {_money(val)} VND")
+        lines.append("")
+
+    if customers:
+        lines.append("🏢 <b>Top nợ nhiều:</b>")
     for c in customers[:10]:
         if isinstance(c, dict):
             name = _val(c, "name", "partner", default="?")
