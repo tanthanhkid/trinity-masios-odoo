@@ -83,41 +83,43 @@ class DashboardController(http.Controller):
         } for item in data]
 
     def _get_recent_orders(self):
-        orders = request.env['sale.order'].search(
-            [], limit=15, order='create_date desc'
+        orders = request.env['sale.order'].search_read(
+            [], fields=['name', 'partner_id', 'date_order', 'amount_total', 'state'],
+            limit=15, order='create_date desc'
         )
-        result = []
-        for o in orders:
-            result.append({
-                'id': o.id,
-                'name': o.name,
-                'partner': o.partner_id.name,
-                'date': o.date_order.strftime('%Y-%m-%d') if o.date_order else '',
-                'amount': o.amount_total,
-                'state': o.state,
-            })
-        return result
+        return [{
+            'id': o['id'],
+            'name': o['name'],
+            'partner': o['partner_id'][1] if o['partner_id'] else '',
+            'date': str(o['date_order'] or '')[:10],
+            'amount': o['amount_total'],
+            'state': o['state'],
+        } for o in orders]
 
     def _get_invoices(self):
-        invoices = request.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('state', '=', 'posted'),
-        ], limit=15, order='invoice_date desc')
+        invoices = request.env['account.move'].search_read(
+            [('move_type', '=', 'out_invoice'), ('state', '=', 'posted')],
+            fields=['name', 'partner_id', 'invoice_date', 'invoice_date_due',
+                    'amount_total', 'amount_residual'],
+            limit=15, order='invoice_date desc'
+        )
+        today = datetime.now().date()
         result = []
         for inv in invoices:
             days_overdue = 0
-            if inv.invoice_date_due and inv.amount_residual > 0:
-                due = inv.invoice_date_due
-                delta = datetime.now().date() - due
-                days_overdue = max(0, delta.days)
+            if inv['invoice_date_due'] and inv['amount_residual'] > 0:
+                due = inv['invoice_date_due']
+                if isinstance(due, str):
+                    due = datetime.strptime(due[:10], '%Y-%m-%d').date()
+                days_overdue = max(0, (today - due).days)
             result.append({
-                'id': inv.id,
-                'name': inv.name,
-                'partner': inv.partner_id.name,
-                'date': inv.invoice_date.strftime('%Y-%m-%d') if inv.invoice_date else '',
-                'amount': inv.amount_total,
-                'residual': inv.amount_residual,
-                'paid': inv.amount_residual == 0,
+                'id': inv['id'],
+                'name': inv['name'],
+                'partner': inv['partner_id'][1] if inv['partner_id'] else '',
+                'date': str(inv['invoice_date'] or '')[:10],
+                'amount': inv['amount_total'],
+                'residual': inv['amount_residual'],
+                'paid': inv['amount_residual'] == 0,
                 'days_overdue': days_overdue,
             })
         return result

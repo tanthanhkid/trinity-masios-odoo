@@ -14,7 +14,7 @@ import json, sys, os
 os.environ["ODOO_URL"] = "http://127.0.0.1:8069"
 os.environ["ODOO_DB"] = "odoo"
 os.environ["ODOO_USERNAME"] = "admin"
-os.environ["ODOO_PASSWORD"] = "admin"
+os.environ["ODOO_PASSWORD"] = os.environ.get("ODOO_ADMIN_PASSWORD", "admin")
 
 # Add server dir to path and import
 sys.path.insert(0, "/opt/odoo/mcp-server")

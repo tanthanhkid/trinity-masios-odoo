@@ -5,13 +5,16 @@ from playwright.async_api import async_playwright
 
 ODOO_URL = "http://103.72.97.51:8069"
 
+_DEFAULT_PWD = os.environ.get("ODOO_TEST_PASSWORD", "masios2024")
+_ADMIN_PWD = os.environ.get("ODOO_ADMIN_PASSWORD", "admin")
+
 TEST_USERS = [
-    {"role": "CEO", "login": "admin", "password": "admin"},
-    {"role": "Hunter Lead", "login": "hung.hunter@masibio.vn", "password": "masios2024"},
-    {"role": "Farmer Lead", "login": "mai.farmer@masibio.vn", "password": "masios2024"},
-    {"role": "Finance", "login": "phuc.finance@masibio.vn", "password": "masios2024"},
-    {"role": "Ops/PM", "login": "dat.ops@masibio.vn", "password": "masios2024"},
-    {"role": "Admin/Tech", "login": "tung.admin@masibio.vn", "password": "masios2024"},
+    {"role": "CEO", "login": "admin", "password": _ADMIN_PWD},
+    {"role": "Hunter Lead", "login": "hung.hunter@masibio.vn", "password": _DEFAULT_PWD},
+    {"role": "Farmer Lead", "login": "mai.farmer@masibio.vn", "password": _DEFAULT_PWD},
+    {"role": "Finance", "login": "phuc.finance@masibio.vn", "password": _DEFAULT_PWD},
+    {"role": "Ops/PM", "login": "dat.ops@masibio.vn", "password": _DEFAULT_PWD},
+    {"role": "Admin/Tech", "login": "tung.admin@masibio.vn", "password": _DEFAULT_PWD},
 ]
 
 EXPECTED_ROLE_TITLES = {

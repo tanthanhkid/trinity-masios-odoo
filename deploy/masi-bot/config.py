@@ -5,10 +5,13 @@ load_dotenv()
 
 # Telegram
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_WHITELIST = {
-    2048339435,  # CEO Minh Sang
-    1481072032,  # Hunter Lead
-}
+_default_whitelist = {2048339435, 1481072032}
+_env_whitelist = os.environ.get("TELEGRAM_WHITELIST", "")
+TELEGRAM_WHITELIST = (
+    {int(uid.strip()) for uid in _env_whitelist.split(",") if uid.strip().isdigit()}
+    if _env_whitelist
+    else _default_whitelist
+)
 
 # GLM-5 via Alibaba (Anthropic-compatible)
 LLM_BASE_URL = "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic"

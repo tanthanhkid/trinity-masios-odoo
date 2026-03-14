@@ -601,6 +601,13 @@ def odoo_create(model: str, values: Any = "{}") -> str:
         model: Model name (e.g. 'crm.lead')
         values: Field values as JSON (e.g. '{"name": "New Lead", "partner_id": 1}')
     """
+    _BLOCKED_MODELS_WRITE = {
+        "ir.model", "ir.module.module", "ir.model.access", "ir.rule",
+        "ir.config_parameter", "res.users", "res.company",
+        "ir.ui.view", "ir.actions.server", "ir.cron",
+    }
+    if model in _BLOCKED_MODELS_WRITE:
+        return json.dumps({"error": f"Cannot create records in protected model '{model}'"})
     client = get_client()
     parsed_values = _parse_values(values)
     record_id = client.create(model, parsed_values)
@@ -617,6 +624,13 @@ def odoo_write(model: str, ids: Any = "[]", values: Any = "{}") -> str:
         ids: JSON array of record IDs (e.g. '[1, 2, 3]')
         values: Field values to update as JSON
     """
+    _BLOCKED_MODELS_WRITE = {
+        "ir.model", "ir.module.module", "ir.model.access", "ir.rule",
+        "ir.config_parameter", "res.users", "res.company",
+        "ir.ui.view", "ir.actions.server", "ir.cron",
+    }
+    if model in _BLOCKED_MODELS_WRITE:
+        return json.dumps({"error": f"Cannot write to protected model '{model}'"})
     client = get_client()
     parsed_ids = _parse_ids(ids)
     parsed_values = _parse_values(values)
@@ -2800,12 +2814,13 @@ def odoo_audit_log(action: str, model: str, record_id: int, user_telegram_id: st
     if not records:
         raise ValueError(f"{model} record {record_id} not found")
 
+    import html as _html
     log_body = (
         f"<p><strong>Audit Log</strong></p>"
         f"<ul>"
-        f"<li><strong>Action:</strong> {action}</li>"
-        f"<li><strong>Telegram User:</strong> {user_telegram_id}</li>"
-        f"<li><strong>Details:</strong> {details}</li>"
+        f"<li><strong>Action:</strong> {_html.escape(action)}</li>"
+        f"<li><strong>Telegram User:</strong> {_html.escape(user_telegram_id)}</li>"
+        f"<li><strong>Details:</strong> {_html.escape(details)}</li>"
         f"<li><strong>Timestamp:</strong> {datetime.now().isoformat()}</li>"
         f"</ul>"
     )
@@ -3250,9 +3265,10 @@ def _create_authed_app(app, api_token: str):
                 await self.app(scope, receive, send)
                 return
 
-            # Only enforce auth on POST requests (messages endpoint)
-            method = scope.get("method", "GET")
-            if method != "POST":
+            # Enforce auth on all HTTP requests (SSE + messages)
+            path = scope.get("path", "")
+            # Skip auth for health check endpoint only
+            if path == "/health":
                 await self.app(scope, receive, send)
                 return
 
