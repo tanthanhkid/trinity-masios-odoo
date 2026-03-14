@@ -1,6 +1,14 @@
 """
 E2E tests for Masi Bot RBAC enforcement via test_server REST API.
 
+Role permissions are defined in masios.telegram_role records in Odoo:
+  CEO (2048339435):       all commands (*)
+  Hunter Lead (1481072032): morning_brief, ceo_alert, hunter_*, khachmoi_homnay,
+                            doanhso_homnay, brief_hunter, kpi, pipeline, newlead,
+                            newcustomer, quote, credit, findcustomer, midday, eod
+  Hunter Lead NOT allowed: farmer_today, congno_denhan, congno_quahan, brief_cash,
+                            brief_ar, farmer_ar, brief_farmer, task_quahan
+
 Run: python3 tests/e2e/test_bot_rbac.py
 """
 import sys, os, json, time, urllib.request, urllib.error
@@ -34,11 +42,18 @@ def has_content(text):
 
 RBAC_TESTS = [
     # (label, cmd, allowed_uid, blocked_uid)
-    ("morning_brief CEO-only",  "/morning_brief",   CEO_USER_ID,    HUNTER_USER_ID),
-    ("ceo_alert CEO-only",      "/ceo_alert",        CEO_USER_ID,    HUNTER_USER_ID),
+    # morning_brief and ceo_alert are allowed for BOTH CEO and Hunter Lead (per Odoo role config)
+    ("morning_brief CEO-ok",    "/morning_brief",   CEO_USER_ID,    None),
+    ("morning_brief hunter-ok", "/morning_brief",   HUNTER_USER_ID, None),
+    ("ceo_alert CEO-ok",        "/ceo_alert",        CEO_USER_ID,    None),
+    ("ceo_alert hunter-ok",     "/ceo_alert",        HUNTER_USER_ID, None),
+    # farmer_today: CEO allowed, Hunter blocked
     ("farmer_today not-hunter", "/farmer_today",     CEO_USER_ID,    HUNTER_USER_ID),
+    # congno_denhan: CEO allowed, Hunter blocked
     ("congno_denhan not-hunter","/congno_denhan",    CEO_USER_ID,    HUNTER_USER_ID),
+    # brief_cash: CEO allowed, Hunter blocked
     ("brief_cash not-hunter",   "/brief_cash",       CEO_USER_ID,    HUNTER_USER_ID),
+    # hunter_today and hunter_sla: Hunter allowed
     ("hunter_today hunter-ok",  "/hunter_today",     HUNTER_USER_ID, None),
     ("hunter_sla hunter-ok",    "/hunter_sla",       HUNTER_USER_ID, None),
 ]

@@ -59,8 +59,11 @@ def run_test(name, steps_checks):
 MULTI_TURN_TESTS = [
     ("quote_bare_number", [
         ("/quote",  ["so", "sale order", "số", "cho biết", "quote"], []),
+        # "1" must resolve to a Sale Order. Must NOT ask for clarification like
+        # "bạn muốn xem Invoice #1 hay SO #1?" — ambiguity between types is the bug.
+        # But "bạn muốn xem thêm" (would you like to see more?) as a closing remark is OK.
         ("1",       ["sale order", "s0", "so#", "order", "customer", "khách", "amount"],
-                    ["bạn muốn xem", "không rõ", "lệnh không"]),
+                    ["bạn muốn xem invoice", "bạn muốn xem hóa đơn", "không rõ", "lệnh không"]),
     ]),
     ("invoice_bare_number", [
         ("/invoice", ["invoice", "hóa đơn", "số", "cho biết"], []),
@@ -70,10 +73,13 @@ MULTI_TURN_TESTS = [
     ("findcustomer_drilldown_no_bad_search", [
         ("/findcustomer", ["tên", "khách", "cho biết", "search"], []),
         ("ABC",           ["abc", "khách", "tìm", "partner", "customer", "không tìm"], []),
-        # Critical: "lịch sử đơn hàng?" must NOT trigger search for customer named that phrase
+        # Critical: "lịch sử đơn hàng?" must NOT trigger a NEW customer search for that phrase.
+        # The bot should drill-down on ABC Tech's orders, so response will contain "lịch sử" naturally.
+        # Bad patterns: bot should NOT say "tìm thấy khách" (which would mean it searched for a
+        # customer named "lịch sử đơn hàng") and should NOT say it found no customer by that name.
         ("lịch sử đơn hàng?",
          ["đơn hàng", "order", "lịch sử", "không có", "purchase", "sale", "mua"],
-         ["lịch sử đơn hàng", "tìm thấy khách"]),  # Should NOT search for customer named "lịch sử"
+         ["tìm thấy khách hàng tên", "không tìm thấy khách hàng tên"]),  # Should NOT search for customer named "lịch sử"
     ]),
     ("ok_guard_no_report", [
         ("/kpi",       ["kpi", "pipeline", "doanh thu"], []),
