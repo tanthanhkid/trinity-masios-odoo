@@ -198,6 +198,43 @@ Root cause: OpenClaw template validation strips non-standard keys from JSON,
 so these must be set via CLI after config generation.
 ```
 
+## E2E Test Suite (Playwright)
+
+Playwright headless browser tests against live Odoo server.
+
+### Location
+- `tests/e2e/test_e2e_full.py` — 27 tests across 6 suites
+- `tests/__init__.py`, `tests/e2e/__init__.py` — package markers
+
+### Suites
+| Suite | Tests | Coverage |
+|-------|-------|----------|
+| 1 — Welcome Page | 6 | Each role sees role badge, feature cards, quick links |
+| 2 — RBAC Menu Visibility | 6 | Each role sees only their allowed Odoo app menus |
+| 3 — RBAC URL Blocking | 4 | Forbidden URL access → AccessError dialog or redirect |
+| 4 — Credit Control | 5 | Phân loại KH field, Công nợ tab, outstanding_debt, credit_limit |
+| 5 — Dashboard KPIs | 3 | CEO sees /dashboard, non-CEO redirected to /welcome |
+| 6 — Command Center | 3 | Command Center menu visibility, masios.telegram_user accessible |
+
+### Run
+```bash
+# Requires: pip install playwright && python -m playwright install chromium
+python3 tests/e2e/test_e2e_full.py
+```
+
+**Note:** Run after a 45s+ gap since last test run — Odoo workers (2 CPU, 3.8GB) need cooldown.
+Results: 27/27 PASS on fresh server. Screenshots saved to `test_screenshots/` on failure.
+
+### Test Users
+| Role | Login | Password |
+|------|-------|----------|
+| CEO | admin | admin |
+| Hunter Lead | hung.hunter@masibio.vn | masios2024 |
+| Farmer Lead | mai.farmer@masibio.vn | masios2024 |
+| Finance | phuc.finance@masibio.vn | masios2024 |
+| Ops/PM | dat.ops@masibio.vn | masios2024 |
+| Admin/Tech | tung.admin@masibio.vn | masios2024 |
+
 ## Conventions
 - **SSH platform rules**:
   - **macOS**: Use `sshpass` + `ssh` (native, fast) — install via `brew install hudochenkov/sshpass/sshpass`
