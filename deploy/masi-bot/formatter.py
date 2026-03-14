@@ -11,7 +11,14 @@ logger = logging.getLogger(__name__)
 
 def _safe_json(raw: str):
     try:
-        return json.loads(raw)
+        d = json.loads(raw)
+        # MCP sometimes wraps response as {"result": "{json_string}"}
+        if isinstance(d, dict) and "result" in d and isinstance(d["result"], str):
+            try:
+                return json.loads(d["result"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return d
     except (json.JSONDecodeError, TypeError):
         return {}
 
@@ -319,8 +326,10 @@ def format_congno(raw: str, mode: str = "") -> str:
     icon = "🔴" if mode == "overdue" else "📅"
     lines = [f"{icon} <b>{title}</b>", ""]
 
-    invoices = _val(d, "invoices", "details", default=[])
+    invoices = _val(d, "records", "invoices", "details", default=[])
     total = _val(d, "total_amount", "total", default=0)
+    if not total and d.get("count"):
+        total = sum(inv.get("amount_residual", 0) for inv in invoices if isinstance(inv, dict))
 
     lines.append(f"📊 Tổng: <b>{len(invoices)}</b> hóa đơn — {_money(total)} VND")
     lines.append("")
@@ -355,22 +364,25 @@ def format_hunter_sla(raw: str) -> str:
     d = _safe_json(raw)
     lines = ["🚨 <b>HUNTER SLA</b>", ""]
 
-    leads = _val(d, "leads", "details", "breached", default=[])
+    leads = _val(d, "records", "leads", "details", "breached", default=[])
     if not leads:
         lines.append("✅ Không có lead vi phạm SLA.")
         return "\n".join(lines)
 
-    lines.append(f"📊 Tổng: <b>{len(leads)}</b> leads vi phạm")
+    threshold = d.get("sla_threshold_hours", 48)
+    lines.append(f"📊 Tổng: <b>{len(leads)}</b> leads vi phạm (SLA: {threshold}h)")
     lines.append("")
     for lead in leads[:10]:
         if isinstance(lead, dict):
             name = _val(lead, "name", "lead_name", default="?")
-            hours = _val(lead, "sla_hours", "hours", default="?")
+            hours = _val(lead, "sla_hours", "hours", "hours_since_creation", default="?")
             owner = _val(lead, "owner", "user", "user_id", default="?")
             if isinstance(owner, list):
                 owner = owner[1] if len(owner) > 1 else owner[0]
+            revenue = _val(lead, "expected_revenue", default=0)
             lines.append(f"  • <b>{name}</b>")
-            lines.append(f"    Owner: {owner} | SLA: {hours}h")
+            rev_str = f" | {_money(revenue)} VND" if revenue else ""
+            lines.append(f"    Owner: {owner} | {hours}h{rev_str}")
 
     _dq(lines, d)
     return "\n".join(lines)
@@ -411,7 +423,7 @@ def format_task_overdue(raw: str) -> str:
     d = _safe_json(raw)
     lines = ["📋 <b>TASK QUÁ HẠN</b>", ""]
 
-    tasks = _val(d, "tasks", "details", default=[])
+    tasks = _val(d, "records", "tasks", "details", default=[])
     if not tasks:
         msg = d.get("message", "")
         if msg:
@@ -426,9 +438,10 @@ def format_task_overdue(raw: str) -> str:
         if isinstance(t, dict):
             name = _val(t, "name", "task_name", default="?")
             days = _val(t, "days_overdue", "days", default="?")
-            user = _val(t, "user", "assigned_to", default="?")
+            project = _val(t, "project", "user", "assigned_to", default="")
             lines.append(f"  • <b>{name}</b>")
-            lines.append(f"    {user} | Quá hạn: {days} ngày")
+            proj_str = f"{project} | " if project else ""
+            lines.append(f"    {proj_str}Quá hạn: {days} ngày")
 
     _dq(lines, d)
     return "\n".join(lines)
@@ -448,17 +461,24 @@ def format_credit(raw: str) -> str:
     d = _safe_json(raw)
     lines = ["🚨 <b>KHÁCH VƯỢT CREDIT LIMIT</b>", ""]
 
-    customers = _val(d, "customers", "details", default=[])
+    # MCP returns a plain array or dict with customers key
+    if isinstance(d, list):
+        customers = d
+    else:
+        customers = _val(d, "customers", "details", default=[])
     if not customers:
         lines.append("✅ Không có khách vượt hạn mức.")
         return "\n".join(lines)
 
+    lines.append(f"📊 <b>{len(customers)}</b> khách vượt hạn mức")
+    lines.append("")
     for c in customers[:10]:
         if isinstance(c, dict):
             name = _val(c, "name", "partner", default="?")
             limit_v = _money(_val(c, "credit_limit", default=0))
             debt = _money(_val(c, "outstanding_debt", "debt", "total_debt", default=0))
-            over = _money(_val(c, "exceeded_by", "over", default=0))
+            exceeded = _val(c, "credit_available", "exceeded_by", "over", default=0)
+            over = _money(abs(exceeded)) if exceeded else "0"
             lines.append(f"  • <b>{name}</b>")
             lines.append(f"    Hạn mức: {limit_v} | Nợ: {debt} | Vượt: {over}")
 
