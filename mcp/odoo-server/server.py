@@ -313,7 +313,7 @@ mcp = FastMCP(
     "odoo",
     instructions="Real-time Odoo introspection and CRUD via XML-RPC",
     transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=False,
+        enable_dns_rebinding_protection=True,
     ),
 )
 
@@ -3324,9 +3324,10 @@ if __name__ == "__main__":
         api_token = cfg.get("api_token", "")
 
         if not api_token:
-            print("WARNING: No MCP_API_TOKEN set — HTTP endpoint has NO authentication!", file=sys.stderr)
+            print("ERROR: No MCP_API_TOKEN set — refusing to start HTTP server without authentication!", file=sys.stderr)
             print("Generate one with: python3 server.py --generate-token", file=sys.stderr)
-            print("Then add MCP_API_TOKEN=<token> to /etc/odoo-mcp/credentials\n", file=sys.stderr)
+            print("Then add MCP_API_TOKEN=<token> to /etc/odoo-mcp/credentials", file=sys.stderr)
+            sys.exit(1)
 
         mcp.settings.host = cli_args.host
         mcp.settings.port = cli_args.port
@@ -3348,7 +3349,7 @@ if __name__ == "__main__":
                 ws_ping_timeout=10,
                 h11_max_incomplete_event_size=64 * 1024,
             )
-        else:
-            mcp.run(transport="sse")
+        # Note: the else branch (no token) is unreachable because
+        # we sys.exit(1) above when api_token is empty.
     else:
         mcp.run()
