@@ -192,41 +192,90 @@ class MasiAgent:
                     return msgs
 
         # --- 2. Drill-down injection: follow-up questions about a found entity ---
-        partner_match = re.search(r'(?:ID[:\s=]*|partner.*?ID[:\s=]*)(\d+)', prev_assistant)
-        partner_name_match = re.search(r'(?:Tên|Khách hàng|Customer)[:\s]*\*?\*?([^*\n(]+)', prev_assistant)
+        # Try multiple regex patterns to extract partner_id (handles HTML, bold, code formatting)
+        partner_id = None
+        for pattern in [
+            r'partner_id[=:\s]*(\d+)',
+            r'<code>(\d+)</code>',
+            r'ID[:\s]*(?:<[^>]+>)*(\d+)',
+            r'id[:\s=]+(\d+)',
+        ]:
+            m = re.search(pattern, prev_assistant, re.IGNORECASE)
+            if m:
+                partner_id = m.group(1)
+                break
 
-        if partner_match and len(last_user) <= 50:
-            partner_id = partner_match.group(1)
-            partner_name = partner_name_match.group(1).strip() if partner_name_match else "?"
-            drill_keywords = ["lịch sử", "đơn hàng", "nợ", "credit", "thanh toán", "mua gì",
-                              "chi tiết", "thông tin", "xếp hạng", "revenue", "doanh thu",
-                              "nhắc nợ", "gửi nhắc", "liên hệ", "dispute", "escalate"]
-            if any(kw in last_user.lower() for kw in drill_keywords):
+        # Extract partner name from various LLM response formats
+        partner_name = None
+        for pattern in [
+            r'(?:Tên|Khách hàng|Customer|KH)[:\s]*(?:<[^>]*>)*\*{0,2}([^*\n<(]+)',
+            r'\*\*([^*]+)\*\*\s*(?:\(|partner_id)',
+            r'(?:tìm thấy|found)[:\s]+(?:<[^>]*>)*([^\n<(]+)',
+        ]:
+            m = re.search(pattern, prev_assistant, re.IGNORECASE)
+            if m:
+                partner_name = m.group(1).strip().rstrip(":")
+                break
+
+        drill_keywords = [
+            "lịch sử", "đơn hàng", "nợ", "credit", "thanh toán", "mua gì",
+            "chi tiết", "thông tin", "xếp hạng", "revenue", "doanh thu",
+            "nhắc nợ", "gửi nhắc", "liên hệ", "dispute", "escalate",
+            "cần gọi", "gọi cho", "contact", "limit", "hạn mức",
+            "phân loại", "classification", "tag", "note", "ghi chú",
+            "địa chỉ", "email", "điện thoại", "sdt", "phone",
+        ]
+
+        if partner_id and any(kw in last_user.lower() for kw in drill_keywords):
+            name_str = f"'{partner_name}'" if partner_name else "đã tìm"
+            context_hint = (
+                f"User đang xem KH {name_str} (partner_id={partner_id}). "
+                f"Câu hỏi '{last_user}' là DRILL-DOWN về KH này, KHÔNG phải tìm KH mới. "
+                f"Dùng partner_id={partner_id} làm filter trực tiếp."
+            )
+            msgs = list(msgs)
+            msgs[-1] = {"role": "user", "content": f"[CONTEXT: {context_hint}]\n\n{last_user}"}
+            logger.info("Context injected (drill-down): partner_id=%s, msg='%s'", partner_id, last_user)
+            return msgs
+
+        # --- 3. List context: follow-up on a list of leads/customers shown ---
+        # When bot just showed a list and user asks a short analytical question
+        list_context_keywords = ["cần gọi ai", "ai quan trọng", "ưu tiên", "plan", "tiếp cận",
+                                  "expected", "target", "focus", "tập trung"]
+        if any(kw in last_user.lower() for kw in list_context_keywords) and len(last_user) <= 60:
+            if any(kw in pa for kw in ["danh sách", "leads", "khách", "list", "record"]):
                 context_hint = (
-                    f"User đang xem KH '{partner_name}' (partner_id={partner_id}). "
-                    f"Câu hỏi '{last_user}' là DRILL-DOWN về KH này, KHÔNG phải tìm KH mới. "
-                    f"Dùng partner_id={partner_id} hoặc tên '{partner_name}' làm filter."
+                    f"User đang xem danh sách data vừa hiển thị ở trên. "
+                    f"Câu hỏi '{last_user}' là phân tích/hành động trên danh sách đó. "
+                    f"KHÔNG search mới — hãy phân tích từ data đã có hoặc trả lời dựa trên context."
                 )
                 msgs = list(msgs)
                 msgs[-1] = {"role": "user", "content": f"[CONTEXT: {context_hint}]\n\n{last_user}"}
-                logger.info("Context injected (drill-down): partner_id=%s, msg='%s'", partner_id, last_user)
+                logger.info("Context injected (list-analysis): msg='%s'", last_user)
                 return msgs
 
         return msgs
 
     @staticmethod
     def _trim_history(msgs: list, keep: int = 8) -> list:
-        """Trim conversation history to last `keep` messages to reduce token count.
-        Preserves first message (original command) and ensures user-role start."""
+        """Trim conversation history to reduce token count.
+        Preserves first 2 messages (command + initial response) + last `keep` messages.
+        This keeps the original intent AND recent context for drill-down coherence."""
         if len(msgs) <= keep + 2:
             return msgs
-        trimmed = [msgs[0]] + msgs[-keep:]
+        # Keep first 2 (original command context) + last `keep` (recent turns)
+        anchor = msgs[:2]
+        recent = msgs[-keep:]
+        # Avoid duplicates if overlap
+        seen_ids = {id(m) for m in anchor}
+        deduped_recent = [m for m in recent if id(m) not in seen_ids]
+        trimmed = anchor + deduped_recent
         # Ensure starts with user role (Anthropic API requirement)
         while trimmed and trimmed[0]["role"] != "user":
             trimmed = trimmed[1:]
         if not trimmed:
             return msgs
-        logger.info("History trimmed: %d → %d messages", len(msgs), len(trimmed))
+        logger.info("History trimmed: %d → %d messages (anchor=2, recent=%d)", len(msgs), len(trimmed), len(deduped_recent))
         return trimmed
 
     async def _fast_command(self, cmd: str, system: str, user_id: int, tools: list) -> str:
