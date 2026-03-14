@@ -43,7 +43,7 @@ class CrmLead(models.Model):
         """Tính trạng thái SLA dựa trên thời gian từ tạo lead đến first_touch.
         - ok: đã liên hệ trong vòng sla_hours
         - warning: chưa liên hệ, đã qua sla_hours nhưng chưa quá 24h
-        - breached: chưa liên hệ quá 24h
+        - breached: chưa liên hệ quá 24h, HOẶC đã liên hệ nhưng trễ hơn sla_hours
         """
         now = fields.Datetime.now()
         for lead in self:
@@ -52,12 +52,12 @@ class CrmLead(models.Model):
                 continue
 
             if lead.first_touch_date:
-                # Đã liên hệ — kiểm tra có trong SLA không
+                # Đã liên hệ — liên hệ đúng hạn thì ok, trễ thì breached
                 hours_elapsed = (lead.first_touch_date - lead.create_date).total_seconds() / 3600
                 if hours_elapsed <= (lead.sla_hours or 4.0):
                     lead.sla_status = 'ok'
                 else:
-                    lead.sla_status = 'warning'
+                    lead.sla_status = 'breached'
             else:
                 # Chưa liên hệ — kiểm tra thời gian đã trôi qua
                 hours_elapsed = (now - lead.create_date).total_seconds() / 3600
