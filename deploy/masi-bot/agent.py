@@ -112,8 +112,60 @@ class MasiAgent:
         if cmd in COMMAND_TOOL_MAP:
             return await self._fast_command(cmd, system, telegram_user_id, tools)
 
+        # Context injection: if user sends bare number/word after a pending command,
+        # prepend context so LLM reliably connects it to the previous flow
+        msgs = self._inject_context(msgs)
+
         # Normal path: full tool-calling loop
         return await self._tool_loop(msgs, system, tools, telegram_user_id)
+
+    def _inject_context(self, msgs: list[dict]) -> list[dict]:
+        """If user sends a short reply (number/word) after bot asked for input,
+        rewrite the user message to include explicit context."""
+        if len(msgs) < 3:
+            return msgs
+
+        last_user = msgs[-1]["content"].strip()
+        # Only inject for short replies (bare numbers, single words)
+        if len(last_user) > 20 or last_user.startswith("/"):
+            return msgs
+
+        # Find last assistant message
+        prev_assistant = None
+        for m in reversed(msgs[:-1]):
+            if m["role"] == "assistant":
+                prev_assistant = m["content"]
+                break
+
+        if not prev_assistant:
+            return msgs
+
+        pa = prev_assistant.lower()
+
+        # Detect what the bot was asking for and inject context
+        context_map = [
+            (["sale order", "so ", "báo giá", "quote", "số so"],
+             f"User đang trong flow /quote. Họ trả lời '{last_user}' = Sale Order ID. Gọi odoo_sale_order_summary(order_id={last_user}) NGAY."),
+            (["invoice", "hóa đơn", "số invoice", "số hđ"],
+             f"User đang trong flow /invoice. Họ trả lời '{last_user}' = Invoice ID. Gọi odoo_invoice_summary(invoice_id={last_user}) NGAY."),
+            (["tên khách", "khách hàng", "findcustomer", "tên kh"],
+             f"User đang trong flow /findcustomer. Họ trả lời '{last_user}' = tên khách hàng cần tìm. Gọi odoo_search_read ngay."),
+            (["id khách", "partner", "credit"],
+             f"User đang trong flow kiểm tra credit. Họ trả lời '{last_user}' = partner ID. Gọi tool ngay."),
+        ]
+
+        for keywords, context_hint in context_map:
+            if any(kw in pa for kw in keywords):
+                msgs = list(msgs)  # copy
+                # Inject a system-like context as a preceding user message
+                msgs[-1] = {
+                    "role": "user",
+                    "content": f"[CONTEXT: {context_hint}]\n\n{last_user}",
+                }
+                logger.info("Context injected for short reply '%s': %s", last_user, context_hint[:80])
+                return msgs
+
+        return msgs
 
     async def _fast_command(self, cmd: str, system: str, user_id: int, tools: list) -> str:
         """Fast path: call MCP tool directly, then 1 LLM call to format."""

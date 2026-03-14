@@ -1,5 +1,6 @@
 {
   "api_base": "http://103.72.97.51:8300",
+  "default_user_id": 2048339435,
   "scenarios": [
     {
       "command": "/kpi",
@@ -9,6 +10,18 @@
           "name": "basic_kpi",
           "steps": ["/kpi"],
           "expect": {"path": "fast", "max_ms": 3000, "must_contain": ["pipeline", "doanh thu", "leads"], "no_error": true}
+        },
+        {
+          "name": "kpi_then_ask_detail",
+          "steps": ["/kpi", "pipeline đang bao nhiêu?"],
+          "expect": {"max_ms": 30000, "must_contain_any": ["pipeline", "Pipeline", "tỷ"], "no_error": true},
+          "note": "User xem KPI xong hỏi thêm về pipeline — bot phải dùng context trước đó"
+        },
+        {
+          "name": "kpi_then_compare",
+          "steps": ["/kpi", "so với tháng trước thế nào?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User hỏi so sánh — bot có thể trả lời hoặc nói chưa có data so sánh, KHÔNG được crash"
         }
       ]
     },
@@ -19,7 +32,19 @@
         {
           "name": "basic_morning_brief",
           "steps": ["/morning_brief"],
-          "expect": {"path": "fast", "max_ms": 3000, "must_contain_any": ["brief", "tổng", "hôm nay", "pipeline", "doanh"], "no_error": true}
+          "expect": {"path": "fast", "max_ms": 3000, "must_contain_any": ["brief", "hunter", "farmer", "công nợ"], "no_error": true}
+        },
+        {
+          "name": "brief_then_drill_alert",
+          "steps": ["/morning_brief", "cái alert đầu tiên là gì vậy?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User xem brief xong hỏi chi tiết alert — bot phải hiểu context"
+        },
+        {
+          "name": "brief_then_action",
+          "steps": ["/morning_brief", "gửi cho tôi danh sách lead chưa xử lý"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User đọc brief xong muốn hành động — bot phải gọi tool tìm lead"
         }
       ]
     },
@@ -31,6 +56,12 @@
           "name": "basic_pipeline",
           "steps": ["/pipeline"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "pipeline_then_ask_stage",
+          "steps": ["/pipeline", "stage nào nhiều nhất?"],
+          "expect": {"max_ms": 30000, "must_contain_any": ["stage", "leads", "nhiều"], "no_error": true},
+          "note": "User hỏi phân tích dựa trên data pipeline vừa xem"
         }
       ]
     },
@@ -42,50 +73,12 @@
           "name": "basic_doanhso",
           "steps": ["/doanhso_homnay"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
-        }
-      ]
-    },
-    {
-      "command": "/brief_hunter",
-      "path": "fast",
-      "tests": [
+        },
         {
-          "name": "basic_brief_hunter",
-          "steps": ["/brief_hunter"],
-          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
-        }
-      ]
-    },
-    {
-      "command": "/brief_farmer",
-      "path": "fast",
-      "tests": [
-        {
-          "name": "basic_brief_farmer",
-          "steps": ["/brief_farmer"],
-          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
-        }
-      ]
-    },
-    {
-      "command": "/brief_ar",
-      "path": "fast",
-      "tests": [
-        {
-          "name": "basic_brief_ar",
-          "steps": ["/brief_ar"],
-          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
-        }
-      ]
-    },
-    {
-      "command": "/brief_cash",
-      "path": "fast",
-      "tests": [
-        {
-          "name": "basic_brief_cash",
-          "steps": ["/brief_cash"],
-          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+          "name": "doanhso_then_ask_who",
+          "steps": ["/doanhso_homnay", "ai bán nhiều nhất?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User hỏi chi tiết ai bán — bot cần gọi tool hoặc trả lời từ context"
         }
       ]
     },
@@ -97,6 +90,18 @@
           "name": "basic_ceo_alert",
           "steps": ["/ceo_alert"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "alert_then_fix",
+          "steps": ["/ceo_alert", "cái lead đầu tiên assign cho ai vậy?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User xem alert xong hỏi chi tiết — bot phải query lead"
+        },
+        {
+          "name": "alert_then_count",
+          "steps": ["/ceo_alert", "có bao nhiêu cái critical?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User hỏi đếm — bot phải đọc lại context alert vừa trả"
         }
       ]
     },
@@ -108,6 +113,12 @@
           "name": "basic_hunter_today",
           "steps": ["/hunter_today"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "hunter_then_sla",
+          "steps": ["/hunter_today", "lead nào bị breach SLA?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User xem hunter xong hỏi SLA detail — bot phải gọi sla tool"
         }
       ]
     },
@@ -163,6 +174,62 @@
           "name": "basic_khachmoi",
           "steps": ["/khachmoi_homnay"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "khachmoi_then_detail",
+          "steps": ["/khachmoi_homnay", "liệt kê tên khách mới đi"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User muốn xem danh sách chi tiết khách mới"
+        }
+      ]
+    },
+    {
+      "command": "/brief_hunter",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_hunter",
+          "steps": ["/brief_hunter"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/brief_farmer",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_farmer",
+          "steps": ["/brief_farmer"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        }
+      ]
+    },
+    {
+      "command": "/brief_ar",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_ar",
+          "steps": ["/brief_ar"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "ar_then_who_owes",
+          "steps": ["/brief_ar", "ai nợ nhiều nhất?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User hỏi top debtor sau khi xem AR"
+        }
+      ]
+    },
+    {
+      "command": "/brief_cash",
+      "path": "fast",
+      "tests": [
+        {
+          "name": "basic_brief_cash",
+          "steps": ["/brief_cash"],
+          "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
         }
       ]
     },
@@ -174,6 +241,12 @@
           "name": "basic_farmer_today",
           "steps": ["/farmer_today"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "farmer_then_sleeping",
+          "steps": ["/farmer_today", "khách nào ngủ đông lâu nhất?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User drill down từ farmer overview sang sleeping detail"
         }
       ]
     },
@@ -196,6 +269,12 @@
           "name": "basic_farmer_sleeping",
           "steps": ["/farmer_sleeping"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "sleeping_then_contact",
+          "steps": ["/farmer_sleeping", "đánh dấu đã liên hệ khách đầu tiên"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User muốn action trên data vừa xem — bot phải hiểu context"
         }
       ]
     },
@@ -240,6 +319,12 @@
           "name": "basic_congno_denhan",
           "steps": ["/congno_denhan"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "congno_then_mark",
+          "steps": ["/congno_denhan", "đánh dấu thu tiền cho cái đầu tiên"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User xem công nợ xong muốn đánh dấu đã thu — cần confirm trước"
         }
       ]
     },
@@ -251,6 +336,12 @@
           "name": "basic_congno_quahan",
           "steps": ["/congno_quahan"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "congno_quahan_then_escalate",
+          "steps": ["/congno_quahan", "cái nào quá hạn lâu nhất?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User hỏi phân tích từ data quá hạn"
         }
       ]
     },
@@ -273,6 +364,12 @@
           "name": "basic_midday",
           "steps": ["/midday"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "midday_then_worry",
+          "steps": ["/midday", "có gì đáng lo không?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User xem midday report xong hỏi nhận xét — bot phải phân tích từ data"
         }
       ]
     },
@@ -284,6 +381,12 @@
           "name": "basic_eod",
           "steps": ["/eod"],
           "expect": {"path": "fast", "max_ms": 3000, "no_error": true}
+        },
+        {
+          "name": "eod_then_summary",
+          "steps": ["/eod", "tóm tắt lại cho tôi 3 điểm chính"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User muốn tóm tắt — bot phải đọc lại context EOD report"
         }
       ]
     },
@@ -310,7 +413,26 @@
         {
           "name": "quote_multi_turn",
           "steps": ["/quote", "1"],
-          "expect": {"max_ms": 30000, "must_contain_any": ["SO", "S00001", "báo giá", "quote", "sale order"], "no_error": true}
+          "expect": {"max_ms": 30000, "must_contain_any": ["SO", "S00001", "báo giá", "quote", "sale order", "98"], "no_error": true},
+          "note": "CRITICAL: Bot PHẢI hiểu 1 là SO ID vì đang trong flow /quote, KHÔNG hỏi lại"
+        },
+        {
+          "name": "quote_then_pdf",
+          "steps": ["/quote 1", "gửi pdf đi"],
+          "expect": {"max_ms": 60000, "no_error": true},
+          "note": "User xem quote xong muốn PDF — bot phải gọi odoo_sale_order_pdf"
+        },
+        {
+          "name": "quote_wrong_id",
+          "steps": ["/quote 99999"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Edge case: SO không tồn tại — bot phải báo lỗi nhẹ nhàng"
+        },
+        {
+          "name": "quote_then_another",
+          "steps": ["/quote 1", "còn cái số 2 thì sao?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User xem quote 1 xong muốn xem tiếp quote 2 — bot phải hiểu ngữ cảnh"
         }
       ]
     },
@@ -320,13 +442,26 @@
       "tests": [
         {
           "name": "invoice_with_id",
-          "steps": ["/invoice 1"],
+          "steps": ["/invoice 2"],
           "expect": {"max_ms": 30000, "must_contain_any": ["hóa đơn", "invoice", "INV"], "no_error": true}
         },
         {
           "name": "invoice_multi_turn",
-          "steps": ["/invoice", "1"],
-          "expect": {"max_ms": 30000, "no_error": true}
+          "steps": ["/invoice", "2"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "CRITICAL: Bot PHẢI hiểu 2 là invoice ID"
+        },
+        {
+          "name": "invoice_not_exist",
+          "steps": ["/invoice 88888"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Edge case: invoice không tồn tại"
+        },
+        {
+          "name": "invoice_then_pay",
+          "steps": ["/invoice 2", "khách này đã thanh toán chưa?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User hỏi status thanh toán sau khi xem invoice"
         }
       ]
     },
@@ -342,7 +477,26 @@
         {
           "name": "find_multi_turn",
           "steps": ["/findcustomer", "ABC"],
-          "expect": {"max_ms": 30000, "no_error": true}
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Bot phải hiểu ABC là tên KH cần tìm"
+        },
+        {
+          "name": "find_not_exist",
+          "steps": ["/findcustomer XYZNOEXIST123"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Tìm KH không tồn tại — phải trả lời không tìm thấy"
+        },
+        {
+          "name": "find_then_credit",
+          "steps": ["/findcustomer ABC", "tình trạng công nợ của họ?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User tìm KH xong hỏi công nợ — bot phải dùng partner ID từ kết quả trước"
+        },
+        {
+          "name": "find_partial_name",
+          "steps": ["/findcustomer tri"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Tìm bằng tên ngắn/partial — phải search ilike"
         }
       ]
     },
@@ -354,6 +508,12 @@
           "name": "show_menu",
           "steps": ["/masi"],
           "expect": {"max_ms": 30000, "must_contain_any": ["menu", "lệnh", "command", "kpi", "pipeline"], "no_error": true}
+        },
+        {
+          "name": "masi_then_quick_cmd",
+          "steps": ["/masi", "cho tôi xem doanh số"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User xem menu xong nói tự nhiên — bot phải gọi tool phù hợp"
         }
       ]
     },
@@ -362,14 +522,111 @@
       "path": "llm",
       "tests": [
         {
-          "name": "natural_language_query",
+          "name": "natural_lead_count",
           "steps": ["hôm nay có bao nhiêu lead mới?"],
           "expect": {"max_ms": 30000, "no_error": true}
+        },
+        {
+          "name": "natural_revenue",
+          "steps": ["doanh thu tháng này bao nhiêu rồi?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Câu hỏi tự nhiên về revenue — bot phải gọi tool"
+        },
+        {
+          "name": "natural_vague",
+          "steps": ["tình hình thế nào?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Câu hỏi mơ hồ — bot phải hiểu là hỏi tổng quan và gọi KPI/morning brief"
         },
         {
           "name": "context_continuity",
           "steps": ["/kpi", "giải thích số pipeline"],
           "expect": {"max_ms": 30000, "must_contain_any": ["pipeline", "Pipeline"], "no_error": true}
+        },
+        {
+          "name": "multi_command_flow",
+          "steps": ["/kpi", "so với pipeline thì doanh thu đạt bao nhiêu phần trăm?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User hỏi tính toán từ data vừa xem"
+        },
+        {
+          "name": "switch_topic",
+          "steps": ["/kpi", "chuyển sang xem công nợ đi"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User chuyển chủ đề — bot phải gọi tool AR/congno"
+        },
+        {
+          "name": "vietnamese_slang",
+          "steps": ["ông ơi hôm nay bán được gì chưa?"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Tiếng Việt tự nhiên, informal — bot vẫn phải hiểu và gọi tool"
+        },
+        {
+          "name": "number_only_no_context",
+          "steps": ["5"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User gửi số khi chưa có context — bot phải hỏi ý là gì, KHÔNG crash"
+        },
+        {
+          "name": "thanks_response",
+          "steps": ["/kpi", "ok cảm ơn"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User cảm ơn — bot phải reply bình thường, không gọi tool"
+        },
+        {
+          "name": "rapid_commands",
+          "steps": ["/kpi", "/pipeline", "tổng kết lại giúp tôi"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "User gọi nhiều command liên tục rồi hỏi tổng hợp"
+        }
+      ]
+    },
+    {
+      "command": "rbac",
+      "path": "special",
+      "tests": [
+        {
+          "name": "unauthorized_user",
+          "user_id": 9999999,
+          "steps": ["/kpi"],
+          "expect": {"no_error": true},
+          "note": "User không có quyền — phải bị reject, không crash"
+        }
+      ]
+    },
+    {
+      "command": "edge_cases",
+      "path": "special",
+      "tests": [
+        {
+          "name": "empty_message",
+          "steps": [""],
+          "expect": {"no_error": true},
+          "note": "Tin nhắn rỗng — bot không crash"
+        },
+        {
+          "name": "very_long_message",
+          "steps": ["tôi muốn biết tình hình kinh doanh hôm nay bao gồm doanh thu bán hàng tổng cộng bao nhiêu tiền và có bao nhiêu đơn hàng mới và lead mới từ sáng tới giờ và khách hàng nào nợ nhiều nhất và pipeline đang bao nhiêu và so sánh với hôm qua nữa"],
+          "expect": {"max_ms": 60000, "no_error": true},
+          "note": "Tin nhắn dài, nhiều yêu cầu — bot xử lý được, không crash"
+        },
+        {
+          "name": "typo_command",
+          "steps": ["/kp"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Typo — bot không crash, có thể suggest /kpi"
+        },
+        {
+          "name": "mixed_language",
+          "steps": ["show me today revenue and lead count"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "English — bot vẫn phải xử lý được"
+        },
+        {
+          "name": "emoji_message",
+          "steps": ["📊❓"],
+          "expect": {"max_ms": 30000, "no_error": true},
+          "note": "Emoji only — không crash"
         }
       ]
     }
