@@ -10,6 +10,13 @@ document.addEventListener('DOMContentLoaded', function () {
         return fmt(n) + ' ₫';
     }
 
+    // Escape HTML to prevent XSS from user-controlled data (e.g. partner names)
+    function esc(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     const STATE_LABELS = {
         'draft': 'Nháp',
         'sent': 'Đã gửi',
@@ -55,12 +62,12 @@ document.addEventListener('DOMContentLoaded', function () {
             // Recent Orders
             const ordersBody = document.querySelector('#orders-table tbody');
             data.recent_orders.forEach(o => {
-                const stateClass = 'state-' + o.state;
-                const stateLabel = STATE_LABELS[o.state] || o.state;
+                const stateClass = 'state-' + esc(o.state);
+                const stateLabel = STATE_LABELS[o.state] || esc(o.state);
                 ordersBody.innerHTML += `<tr>
-                    <td>${o.name}</td>
-                    <td>${o.partner}</td>
-                    <td>${o.date}</td>
+                    <td>${esc(o.name)}</td>
+                    <td>${esc(o.partner)}</td>
+                    <td>${esc(o.date)}</td>
                     <td>${fmtCurrency(o.amount)}</td>
                     <td><span class="${stateClass}">${stateLabel}</span></td>
                 </tr>`;
@@ -78,8 +85,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     badge = '<span class="badge badge-unpaid">Chưa TT</span>';
                 }
                 invBody.innerHTML += `<tr>
-                    <td>${inv.name}</td>
-                    <td>${inv.partner}</td>
+                    <td>${esc(inv.name)}</td>
+                    <td>${esc(inv.partner)}</td>
                     <td>${fmtCurrency(inv.amount)}</td>
                     <td>${fmtCurrency(inv.residual)}</td>
                     <td>${badge}</td>
@@ -95,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 data.credit_alerts.forEach(a => {
                     alertsBody.innerHTML += `<tr class="exceeded">
-                        <td>${a.name}</td>
+                        <td>${esc(a.name)}</td>
                         <td>${fmtCurrency(a.credit_limit)}</td>
                         <td>${fmtCurrency(a.outstanding_debt)}</td>
                         <td>${fmtCurrency(a.exceeded_by)}</td>
