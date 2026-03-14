@@ -2,6 +2,7 @@ import anthropic
 import asyncio
 import json
 import logging
+import re
 
 from config import LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, SYSTEM_PROMPT
 from formatter import format_command
@@ -42,6 +43,26 @@ COMMAND_TOOL_MAP = {
 # Tools that return PDF base64 — intercept and handle specially
 PDF_TOOLS = {"odoo_sale_order_pdf", "odoo_invoice_pdf"}
 
+# Quick reply patterns — skip LLM entirely
+_QUICK_PATTERNS = [
+    re.compile(r'^(ok|oke|okie|oki)$'),
+    re.compile(r'^(ok )?(cảm ơn|cam on|thanks|thank you|tks).*$'),
+    re.compile(r'^(ok )?(được rồi|dc rồi|dc roi|ok rồi)$'),
+    re.compile(r'^(tốt lắm|tốt|good|great|nice|hay|hay quá)$'),
+    re.compile(r'^(ok )?(ghi nhận|noted)$'),
+    re.compile(r'^(bye|tạm biệt|hẹn gặp lại).*$'),
+    re.compile(r'^(uh huh|uhm|hmm|à|ờ)$'),
+    re.compile(r'^(ok )?(xong|done)$'),
+    re.compile(r'^(ok )?(tạm ổn|ổn)$'),
+]
+
+_QUICK_REPLIES = [
+    "Dạ, nếu cần gì thêm cứ hỏi nhé! 😊",
+    "Vâng ạ! Có gì cứ gọi nhé 👍",
+    "Ok anh/chị! Chúc làm việc hiệu quả! 💪",
+    "Dạ rồi ạ! 😊",
+]
+
 
 def _extract_pdf(result_str: str) -> dict | None:
     """Check if tool result contains PDF base64 data. Returns parsed dict or None."""
@@ -49,7 +70,6 @@ def _extract_pdf(result_str: str) -> dict | None:
         data = json.loads(result_str) if isinstance(result_str, str) else result_str
         if isinstance(data, dict) and data.get("pdf_base64"):
             return data
-        # Handle nested {"result": "{...}"} from MCP
         if isinstance(data, dict) and "result" in data:
             inner = data["result"]
             if isinstance(inner, str):
@@ -75,8 +95,9 @@ def _pdf_summary(pdf_data: dict) -> str:
 
 
 class MasiAgent:
-    MAX_TOOL_ROUNDS = 10
+    MAX_TOOL_ROUNDS = 5
     MAX_TOKENS = 4096
+    LLM_TIMEOUT = 45.0  # Hard timeout per LLM call (seconds)
 
     def __init__(self, mcp_client):
         self.mcp = mcp_client
@@ -85,7 +106,6 @@ class MasiAgent:
             api_key=LLM_API_KEY,
             timeout=60.0,
         )
-        # Pending PDF files to send after response
         self._pending_pdfs: list[dict] = []
 
     def pop_pending_pdfs(self) -> list[dict]:
@@ -99,13 +119,11 @@ class MasiAgent:
         system = SYSTEM_PROMPT + f"\n\nTelegram user ID hiện tại: {telegram_user_id}"
         msgs = [m.copy() for m in messages]
 
-        # Clear pending PDFs for this request
         self._pending_pdfs = []
 
-        # Fast path: known slash commands → call MCP directly, then 1 LLM call to format
+        # Fast path: known slash commands
         last_msg = msgs[-1]["content"] if msgs else ""
         cmd = last_msg.strip().split()[0] if last_msg.strip() else ""
-        # Strip @botname suffix (e.g. "/kpi@hdxthanhtt4bot" → "/kpi")
         if "@" in cmd:
             cmd = cmd.split("@")[0]
 
@@ -117,8 +135,7 @@ class MasiAgent:
         if quick:
             return quick
 
-        # Context injection: if user sends bare number/word after a pending command,
-        # prepend context so LLM reliably connects it to the previous flow
+        # Context injection
         msgs = self._inject_context(msgs)
 
         # Normal path: full tool-calling loop
@@ -127,27 +144,12 @@ class MasiAgent:
     @staticmethod
     def _quick_reply(msg: str) -> str | None:
         """Return canned response for simple acknowledgements. Skip LLM entirely."""
-        import re
+        import random
         normalized = msg.strip().lower().rstrip("!.?")
-        # Match common acknowledgements
-        patterns = [
-            r'^(ok|oke|okie|oki)$',
-            r'^(ok )?(cảm ơn|cam on|thanks|thank you|tks).*$',
-            r'^(ok )?(được rồi|dc rồi|dc roi|ok rồi)$',
-            r'^(tốt lắm|tốt|good|great|nice|hay)$',
-            r'^(ok )?(ghi nhận|noted)$',
-            r'^(bye|tạm biệt|hẹn gặp lại).*$',
-        ]
-        for p in patterns:
-            if re.match(p, normalized):
-                import random
-                replies = [
-                    "Dạ, nếu cần gì thêm cứ hỏi nhé! 😊",
-                    "Vâng ạ! Có gì cứ gọi nhé 👍",
-                    "Ok anh/chị! Chúc làm việc hiệu quả! 💪",
-                    "Dạ rồi ạ! 😊",
-                ]
-                return random.choice(replies)
+        for p in _QUICK_PATTERNS:
+            if p.match(normalized):
+                return random.choice(_QUICK_REPLIES)
+        return None
 
     def _inject_context(self, msgs: list[dict]) -> list[dict]:
         """Inject context hints for short replies and drill-down questions."""
@@ -190,15 +192,12 @@ class MasiAgent:
                     return msgs
 
         # --- 2. Drill-down injection: follow-up questions about a found entity ---
-        import re
-        # Detect if previous assistant message mentioned a specific customer/partner/SO/invoice
         partner_match = re.search(r'(?:ID[:\s=]*|partner.*?ID[:\s=]*)(\d+)', prev_assistant)
         partner_name_match = re.search(r'(?:Tên|Khách hàng|Customer)[:\s]*\*?\*?([^*\n(]+)', prev_assistant)
 
         if partner_match and len(last_user) <= 50:
             partner_id = partner_match.group(1)
             partner_name = partner_name_match.group(1).strip() if partner_name_match else "?"
-            # Check if the follow-up looks like a drill-down (not a new command or search)
             drill_keywords = ["lịch sử", "đơn hàng", "nợ", "credit", "thanh toán", "mua gì",
                               "chi tiết", "thông tin", "xếp hạng", "revenue", "doanh thu",
                               "nhắc nợ", "gửi nhắc", "liên hệ", "dispute", "escalate"]
@@ -215,11 +214,26 @@ class MasiAgent:
 
         return msgs
 
+    @staticmethod
+    def _trim_history(msgs: list, keep: int = 8) -> list:
+        """Trim conversation history to last `keep` messages to reduce token count.
+        Preserves first message (original command) and ensures user-role start."""
+        if len(msgs) <= keep + 2:
+            return msgs
+        trimmed = [msgs[0]] + msgs[-keep:]
+        # Ensure starts with user role (Anthropic API requirement)
+        while trimmed and trimmed[0]["role"] != "user":
+            trimmed = trimmed[1:]
+        if not trimmed:
+            return msgs
+        logger.info("History trimmed: %d → %d messages", len(msgs), len(trimmed))
+        return trimmed
+
     async def _fast_command(self, cmd: str, system: str, user_id: int, tools: list) -> str:
-        """Fast path: call MCP tool directly, then 1 LLM call to format."""
+        """Fast path: call MCP tool directly, then Python template format."""
         tool_name, tool_args = COMMAND_TOOL_MAP[cmd]
 
-        # Step 1: Permission check (direct MCP call, no LLM)
+        # Step 1: Permission check
         try:
             perm_result = await self.mcp.call_tool("odoo_telegram_check_permission", {
                 "telegram_id": str(user_id),
@@ -232,7 +246,7 @@ class MasiAgent:
         except Exception as e:
             logger.warning("Permission check failed for %s: %s", cmd, e)
 
-        # Step 2: Call the actual MCP tool directly
+        # Step 2: Call MCP tool
         logger.info("Fast path: %s → %s(%s)", cmd, tool_name, tool_args)
         try:
             result = await self.mcp.call_tool(tool_name, tool_args)
@@ -240,49 +254,67 @@ class MasiAgent:
             logger.error("Fast path tool %s failed: %s", tool_name, e)
             return f"❌ Lỗi gọi tool {tool_name}: {e}"
 
-        # Step 3: Format with Python template (no LLM needed!)
+        # Step 3: Python template format (no LLM!)
         formatted = format_command(cmd, result)
         if formatted:
             logger.info("Fast path formatted: %s → %d chars (no LLM)", cmd, len(formatted))
             return formatted
 
-        # Fallback: LLM format if template fails
+        # Fallback: LLM format with retry
         logger.info("Fast path fallback to LLM format for %s", cmd)
         format_prompt = (
             f"User gõ lệnh {cmd}. Dữ liệu từ Odoo:\n\n{result}\n\n"
             "Format thành báo cáo ngắn gọn cho Telegram. Dùng emoji + bullet list. KHÔNG dùng bảng."
         )
-        try:
-            response = await asyncio.to_thread(
-                self.client.messages.create,
-                model=LLM_MODEL,
-                max_tokens=self.MAX_TOKENS,
-                system=system,
-                messages=[{"role": "user", "content": format_prompt}],
-            )
-            text_parts = [b.text for b in response.content if b.type == "text"]
-            return "\n".join(text_parts) or "Đã xử lý."
-        except anthropic.APITimeoutError:
-            return "⏱️ Request timeout. Vui lòng thử lại."
-        except anthropic.APIError as e:
-            return f"❌ Lỗi LLM: {e.message}"
+        for attempt in range(2):
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.messages.create,
+                        model=LLM_MODEL,
+                        max_tokens=self.MAX_TOKENS,
+                        system=system,
+                        messages=[{"role": "user", "content": format_prompt}],
+                    ),
+                    timeout=self.LLM_TIMEOUT,
+                )
+                text_parts = [b.text for b in response.content if b.type == "text"]
+                return "\n".join(text_parts) or "Đã xử lý."
+            except (asyncio.TimeoutError, anthropic.APITimeoutError):
+                if attempt == 0:
+                    logger.warning("Fast path LLM timeout, retrying...")
+                    await asyncio.sleep(2)
+                    continue
+                return "⏱️ Request timeout. Vui lòng thử lại."
+            except anthropic.APIError as e:
+                return f"❌ Lỗi LLM: {e.message}"
 
     async def _tool_loop(self, msgs: list, system: str, tools: list, user_id: int) -> str:
         """Full tool-calling loop for free-form messages."""
+        # Trim history to prevent context overflow and reduce latency
+        msgs = self._trim_history(msgs, keep=8)
+
         for turn in range(self.MAX_TOOL_ROUNDS):
-            logger.info("LLM call turn %d (user_id=%s)", turn + 1, user_id)
+            logger.info("LLM call turn %d/%d (user_id=%s, history=%d)",
+                        turn + 1, self.MAX_TOOL_ROUNDS, user_id, len(msgs))
 
             try:
-                response = await asyncio.to_thread(
-                    self.client.messages.create,
-                    model=LLM_MODEL,
-                    max_tokens=self.MAX_TOKENS,
-                    system=system,
-                    messages=msgs,
-                    tools=tools,
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.messages.create,
+                        model=LLM_MODEL,
+                        max_tokens=self.MAX_TOKENS,
+                        system=system,
+                        messages=msgs,
+                        tools=tools,
+                    ),
+                    timeout=self.LLM_TIMEOUT,
                 )
+            except asyncio.TimeoutError:
+                logger.error("LLM hard timeout (%.0fs) on turn %d", self.LLM_TIMEOUT, turn + 1)
+                return "⏱️ Hệ thống đang tải, vui lòng thử lại sau 10 giây."
             except anthropic.APITimeoutError:
-                logger.error("LLM timeout on turn %d", turn + 1)
+                logger.error("LLM SDK timeout on turn %d", turn + 1)
                 return "⏱️ Request timeout. Vui lòng thử lại."
             except anthropic.APIError as e:
                 logger.error("LLM API error on turn %d: %s", turn + 1, e)
@@ -292,7 +324,12 @@ class MasiAgent:
 
             if not tool_use_blocks:
                 text_parts = [b.text for b in response.content if b.type == "text"]
-                return "\n".join(text_parts) or "Đã xử lý."
+                result_text = "\n".join(text_parts)
+                if not result_text:
+                    logger.warning("Empty LLM response on turn %d (stop_reason=%s)",
+                                   turn + 1, getattr(response, "stop_reason", "?"))
+                    return "⚠️ Hệ thống không trả về phản hồi. Hội thoại quá dài — vui lòng bắt đầu câu hỏi mới."
+                return result_text
 
             msgs.append({"role": "assistant", "content": response.content})
 
@@ -308,7 +345,7 @@ class MasiAgent:
                     if not isinstance(result, str):
                         result = json.dumps(result, ensure_ascii=False, default=str)
 
-                    # Intercept PDF results — save file, send summary to LLM
+                    # Intercept PDF results
                     if block.name in PDF_TOOLS:
                         pdf_data = _extract_pdf(result)
                         if pdf_data:
@@ -334,4 +371,4 @@ class MasiAgent:
 
             msgs.append({"role": "user", "content": tool_results})
 
-        return "⚠️ Đã vượt giới hạn xử lý (10 rounds). Vui lòng thử lại với yêu cầu đơn giản hơn."
+        return "⚠️ Đã vượt giới hạn xử lý. Vui lòng thử lại với yêu cầu đơn giản hơn."
