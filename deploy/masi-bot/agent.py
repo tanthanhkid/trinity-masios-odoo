@@ -108,6 +108,8 @@ class MasiAgent:
         )
         # Per-user PDF queues to prevent cross-user PDF leaks
         self._pending_pdfs: dict[int, list[dict]] = {}
+        # Tracks last found entity per user: {user_id: {"type": "partner"|"order"|"invoice", "id": str, "name": str}}
+        self._active_contexts: dict[int, dict] = {}
 
     def pop_pending_pdfs(self, user_id: int = 0) -> list[dict]:
         """Retrieve and clear pending PDF attachments for a specific user."""
@@ -128,7 +130,12 @@ class MasiAgent:
             cmd = cmd.split("@")[0]
 
         if cmd in COMMAND_TOOL_MAP:
+            self._active_contexts.pop(telegram_user_id, None)
             return await self._fast_command(cmd, system, telegram_user_id, tools)
+
+        # Clear active context on any slash command (not just mapped ones)
+        if last_msg.strip().startswith("/"):
+            self._active_contexts.pop(telegram_user_id, None)
 
         # Quick reply guard: "ok", "cảm ơn", etc. → canned response, no LLM
         quick = self._quick_reply(last_msg)
@@ -136,7 +143,7 @@ class MasiAgent:
             return quick
 
         # Context injection
-        msgs = self._inject_context(msgs)
+        msgs = self._inject_context(msgs, user_id=telegram_user_id)
 
         # Normal path: full tool-calling loop
         return await self._tool_loop(msgs, system, tools, telegram_user_id)
@@ -151,7 +158,7 @@ class MasiAgent:
                 return random.choice(_QUICK_REPLIES)
         return None
 
-    def _inject_context(self, msgs: list[dict]) -> list[dict]:
+    def _inject_context(self, msgs: list[dict], user_id: int = 0) -> list[dict]:
         """Inject context hints for short replies and drill-down questions."""
         if len(msgs) < 3:
             return msgs
@@ -159,6 +166,45 @@ class MasiAgent:
         last_user = msgs[-1]["content"].strip()
         if last_user.startswith("/"):
             return msgs
+
+        # --- 0. Persistent active context (most reliable source) ---
+        drill_keywords = [
+            "lịch sử", "đơn hàng", "nợ", "credit", "thanh toán", "mua gì",
+            "chi tiết", "thông tin", "xếp hạng", "revenue", "doanh thu",
+            "nhắc nợ", "gửi nhắc", "liên hệ", "dispute", "escalate",
+            "cần gọi", "gọi cho", "contact", "limit", "hạn mức",
+            "phân loại", "classification", "tag", "note", "ghi chú",
+            "địa chỉ", "email", "điện thoại", "sdt", "phone",
+            "so này", "hóa đơn này", "khách này", "invoice này",
+        ]
+        active = self._active_contexts.get(user_id)
+        if active and any(kw in last_user.lower() for kw in drill_keywords):
+            entity_type = active["type"]
+            entity_id = active["id"]
+            entity_name = active.get("name") or entity_id
+            if entity_type == "partner":
+                hint = (
+                    f"User đang trong drill-down về KH '{entity_name}' (partner_id={entity_id}). "
+                    f"Câu hỏi '{last_user}' là VỀ KH NÀY. KHÔNG search_read tên KH mới. "
+                    f"Dùng domain=[['partner_id','=',{entity_id}]] hoặc partner_id={entity_id} trực tiếp."
+                )
+            elif entity_type == "order":
+                hint = (
+                    f"User đang xem Sale Order '{entity_name}' (order_id={entity_id}). "
+                    f"Câu hỏi '{last_user}' là VỀ ĐƠN HÀNG NÀY."
+                )
+            elif entity_type == "invoice":
+                hint = (
+                    f"User đang xem Invoice '{entity_name}' (invoice_id={entity_id}). "
+                    f"Câu hỏi '{last_user}' là VỀ HÓA ĐƠN NÀY."
+                )
+            else:
+                hint = None
+            if hint:
+                msgs = list(msgs)
+                msgs[-1] = {"role": "user", "content": f"[CONTEXT: {hint}]\n\n{last_user}"}
+                logger.info("Context injected (active_ctx %s=%s): '%s'", entity_type, entity_id, last_user)
+                return msgs
 
         # Find last assistant message
         prev_assistant = None
@@ -218,15 +264,6 @@ class MasiAgent:
                 partner_name = m.group(1).strip().rstrip(":")
                 break
 
-        drill_keywords = [
-            "lịch sử", "đơn hàng", "nợ", "credit", "thanh toán", "mua gì",
-            "chi tiết", "thông tin", "xếp hạng", "revenue", "doanh thu",
-            "nhắc nợ", "gửi nhắc", "liên hệ", "dispute", "escalate",
-            "cần gọi", "gọi cho", "contact", "limit", "hạn mức",
-            "phân loại", "classification", "tag", "note", "ghi chú",
-            "địa chỉ", "email", "điện thoại", "sdt", "phone",
-        ]
-
         if partner_id and any(kw in last_user.lower() for kw in drill_keywords):
             name_str = f"'{partner_name}'" if partner_name else "đã tìm"
             context_hint = (
@@ -256,6 +293,46 @@ class MasiAgent:
                 return msgs
 
         return msgs
+
+    @staticmethod
+    def _extract_entity_from_tool_result(tool_name: str, tool_result) -> dict | None:
+        """Extract active entity context from a tool result to persist for drill-down."""
+        import json as _json
+        try:
+            data = _json.loads(tool_result) if isinstance(tool_result, str) else tool_result
+            data = data.get("result", data) if isinstance(data, dict) else data
+        except Exception:
+            data = {}
+
+        # search_read → partner (only if exactly 1 result)
+        if tool_name == "odoo_search_read" and isinstance(data, dict):
+            records = data.get("records", [])
+            if len(records) == 1:
+                r = records[0]
+                return {"type": "partner", "id": str(r.get("id", "")), "name": r.get("name", "")}
+
+        # customer_credit_status → partner
+        if tool_name == "odoo_customer_credit_status" and isinstance(data, dict):
+            pid = data.get("partner_id") or data.get("id")
+            name = data.get("name", "")
+            if pid:
+                return {"type": "partner", "id": str(pid), "name": name}
+
+        # sale_order_summary → order
+        if tool_name == "odoo_sale_order_summary" and isinstance(data, dict):
+            oid = data.get("id") or data.get("order_id")
+            name = data.get("name", "")
+            if oid:
+                return {"type": "order", "id": str(oid), "name": name}
+
+        # invoice_summary → invoice
+        if tool_name == "odoo_invoice_summary" and isinstance(data, dict):
+            iid = data.get("id") or data.get("invoice_id")
+            name = data.get("name", "")
+            if iid:
+                return {"type": "invoice", "id": str(iid), "name": name}
+
+        return None
 
     @staticmethod
     def _trim_history(msgs: list, keep: int = 8) -> list:
@@ -405,6 +482,12 @@ class MasiAgent:
                             result = _pdf_summary(pdf_data)
                             logger.info("PDF intercepted: %s (%d bytes)",
                                         pdf_data.get("filename"), pdf_data.get("size_bytes", 0))
+
+                    # Track active entity context for drill-down
+                    entity = self._extract_entity_from_tool_result(block.name, result)
+                    if entity:
+                        self._active_contexts[user_id] = entity
+                        logger.info("Active context set: user=%d %s", user_id, entity)
 
                     tool_results.append({
                         "type": "tool_result",
