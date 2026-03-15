@@ -386,10 +386,63 @@ def format_congno(raw: str, mode: str = "") -> str:
     return "\n".join(lines)
 
 
-def format_hunter_today(raw: str) -> str:
+def format_hunter_today(raw: str, section_override: str = "") -> str:
+    """Dedicated formatter for odoo_hunter_today.
+    Handles sections: all, overview, sla, quotes, first_orders, sources.
+    """
     d = _safe_json(raw)
-    lines = ["🎯 <b>HUNTER TODAY</b>", ""]
-    _format_generic(lines, d)
+    section = section_override or d.get("section", "all")
+    lines = ["🎯 <b>HUNTER TODAY</b> — " + d.get("date", ""), ""]
+
+    if section in ("all", "overview"):
+        ov = d.get("overview", {})
+        lines.append("📋 <b>Tổng quan</b>")
+        lines.append(f"  • Leads tạo hôm nay: <b>{ov.get('leads_created_today', 0)}</b>")
+        lines.append(f"  • Activities đến hạn: <b>{ov.get('activities_due_today', 0)}</b>")
+        lines.append("")
+
+    if section in ("all", "sla"):
+        sla = d.get("sla", {})
+        lines.append("⏱️ <b>SLA</b>")
+        lines.append(f"  • OK (trong 48h): <b>{sla.get('ok', 0)}</b>")
+        lines.append(f"  • Vi phạm (>48h): <b>{sla.get('breached', 0)}</b>")
+        lines.append("")
+
+    if section in ("all", "quotes"):
+        qt = d.get("quotes", {})
+        lines.append(f"📝 <b>Báo giá</b> ({qt.get('count', 0)} đơn)")
+        records = qt.get("records", [])
+        for q in records[:8]:
+            if isinstance(q, dict):
+                name = q.get("name", "?")
+                partner = q.get("partner", "?")
+                amount = _money(q.get("amount", 0))
+                state = q.get("state", "")
+                state_vn = {"draft": "Nháp", "sent": "Đã gửi"}.get(state, state)
+                lines.append(f"  • <b>{name}</b> — {partner}: {amount} VND ({state_vn})")
+        if len(records) > 8:
+            lines.append(f"  ... +{len(records) - 8} khác")
+        lines.append("")
+
+    if section in ("all", "first_orders"):
+        fo = d.get("first_orders", {})
+        lines.append("🆕 <b>Đơn đầu tiên hôm nay</b>")
+        lines.append(f"  • Số đơn: <b>{fo.get('count', 0)}</b>")
+        lines.append(f"  • Doanh thu: <b>{_money(fo.get('revenue', 0))}</b> VND")
+        lines.append("")
+
+    if section in ("all", "sources"):
+        sources = d.get("sources", [])
+        lines.append(f"📊 <b>Nguồn lead tháng này</b> ({len(sources)} nguồn)")
+        for s in sources[:10]:
+            if isinstance(s, dict):
+                src = s.get("source", "Unknown")
+                cnt = s.get("count", 0)
+                lines.append(f"  • {src}: <b>{cnt}</b>")
+        if len(sources) > 10:
+            lines.append(f"  ... +{len(sources) - 10} khác")
+        lines.append("")
+
     _dq(lines, d)
     return "\n".join(lines)
 
@@ -422,10 +475,76 @@ def format_hunter_sla(raw: str) -> str:
     return "\n".join(lines)
 
 
-def format_farmer_today(raw: str) -> str:
+def format_farmer_today(raw: str, section_override: str = "") -> str:
+    """Dedicated formatter for odoo_farmer_today.
+    Handles sections: all, overview, reorder, sleeping, vip, retention.
+    """
     d = _safe_json(raw)
-    lines = ["🌾 <b>FARMER TODAY</b>", ""]
-    _format_generic(lines, d)
+    section = section_override or d.get("section", "all")
+    lines = ["🌾 <b>FARMER TODAY</b> — " + d.get("date", ""), ""]
+
+    if section in ("all", "overview"):
+        ov = d.get("overview", {})
+        lines.append("📋 <b>Tổng quan</b>")
+        lines.append(f"  • Đơn hàng hôm nay: <b>{ov.get('orders_today', 0)}</b>")
+        lines.append(f"  • Doanh thu hôm nay: <b>{_money(ov.get('revenue_today', 0))}</b> VND")
+        lines.append(f"  • Tổng KH cũ: <b>{ov.get('total_customers', 0)}</b>")
+        lines.append("")
+
+    if section in ("all", "reorder"):
+        rd = d.get("reorder_due", {})
+        lines.append(f"🔄 <b>Cần tái mua</b> ({rd.get('count', 0)} KH)")
+        custs = rd.get("customers", [])
+        for c in custs[:10]:
+            if isinstance(c, dict):
+                name = c.get("name", "?")
+                lo = c.get("last_order", "?")
+                lines.append(f"  • {name} — đơn cuối: {lo}")
+        if len(custs) > 10:
+            lines.append(f"  ... +{len(custs) - 10} khác")
+        lines.append("")
+
+    if section in ("all", "sleeping"):
+        sl = d.get("sleeping", {})
+        b30 = sl.get("30_60d", {})
+        b60 = sl.get("60_90d", {})
+        b90 = sl.get("90d_plus", {})
+        total_sleeping = b30.get("count", 0) + b60.get("count", 0) + b90.get("count", 0)
+        lines.append(f"😴 <b>KH ngủ đông</b> ({total_sleeping} KH)")
+        lines.append(f"  • 30-60 ngày: <b>{b30.get('count', 0)}</b>")
+        for c in b30.get("customers", [])[:3]:
+            if isinstance(c, dict):
+                lines.append(f"    - {c.get('name', '?')} ({c.get('days_since', '?')} ngày)")
+        lines.append(f"  • 60-90 ngày: <b>{b60.get('count', 0)}</b>")
+        for c in b60.get("customers", [])[:3]:
+            if isinstance(c, dict):
+                lines.append(f"    - {c.get('name', '?')} ({c.get('days_since', '?')} ngày)")
+        lines.append(f"  • 90+ ngày: <b>{b90.get('count', 0)}</b>")
+        for c in b90.get("customers", [])[:3]:
+            if isinstance(c, dict):
+                lines.append(f"    - {c.get('name', '?')} ({c.get('days_since', '?')} ngày)")
+        lines.append("")
+
+    if section in ("all", "vip"):
+        vip = d.get("vip_at_risk", {})
+        lines.append(f"⭐ <b>VIP gặp rủi ro</b> ({vip.get('count', 0)} KH)")
+        for c in vip.get("customers", [])[:10]:
+            if isinstance(c, dict):
+                name = c.get("name", "?")
+                lo = c.get("last_order", "Chưa mua")
+                days = c.get("days_since")
+                days_str = f" ({days} ngày)" if days is not None else ""
+                lines.append(f"  • {name} — đơn cuối: {lo}{days_str}")
+        lines.append("")
+
+    if section in ("all", "retention"):
+        rt = d.get("retention", {})
+        lines.append("📊 <b>Retention</b>")
+        lines.append(f"  • KH active (<30 ngày): <b>{rt.get('active_customers', 0)}</b>")
+        lines.append(f"  • Tổng KH: <b>{rt.get('total_customers', 0)}</b>")
+        lines.append(f"  • Tỷ lệ giữ chân: <b>{_pct(rt.get('retention_rate_pct', 0))}</b>")
+        lines.append("")
+
     _dq(lines, d)
     return "\n".join(lines)
 
@@ -497,11 +616,46 @@ def format_task_overdue(raw: str) -> str:
 
 
 def format_flash_report(raw: str, report_type: str = "") -> str:
+    """Dedicated formatter for odoo_flash_report (midday/eod).
+    Keys: revenue_today, orders_today, leads_today, collections_today,
+    open_issues.{overdue_invoices, sla_breached_leads, overdue_tasks},
+    EOD adds: delta_vs_yesterday.{revenue, leads, collections}
+    """
     d = _safe_json(raw)
-    title = "EOD REPORT" if report_type == "eod" else "MIDDAY REPORT"
-    icon = "🌙" if report_type == "eod" else "☀️"
+    rtype = report_type or d.get("report_type", "midday")
+    title = "EOD REPORT" if rtype == "eod" else "MIDDAY REPORT"
+    icon = "🌙" if rtype == "eod" else "☀️"
     lines = [f"{icon} <b>{title} — {d.get('date', '')}</b>", ""]
-    _format_generic(lines, d)
+
+    # Main metrics
+    lines.append("💰 <b>Doanh thu hôm nay:</b> " + _money(d.get("revenue_today", 0)) + " VND")
+    lines.append(f"🛒 <b>Đơn hàng:</b> {d.get('orders_today', 0)}")
+    lines.append(f"🎯 <b>Leads mới:</b> {d.get('leads_today', 0)}")
+    lines.append("💵 <b>Thu hồi nợ:</b> " + _money(d.get("collections_today", 0)) + " VND")
+    lines.append("")
+
+    # Open issues
+    issues = d.get("open_issues", {})
+    lines.append("⚠️ <b>Vấn đề cần xử lý</b>")
+    lines.append(f"  • HĐ quá hạn: <b>{issues.get('overdue_invoices', 0)}</b>")
+    lines.append(f"  • Leads vi phạm SLA: <b>{issues.get('sla_breached_leads', 0)}</b>")
+    lines.append(f"  • Task quá hạn: <b>{issues.get('overdue_tasks', 0)}</b>")
+
+    # EOD delta
+    delta = d.get("delta_vs_yesterday")
+    if delta and isinstance(delta, dict):
+        lines.append("")
+        lines.append("📈 <b>So với hôm qua</b>")
+        rev_delta = delta.get("revenue", 0)
+        rev_icon = "🔼" if rev_delta >= 0 else "🔽"
+        lines.append(f"  {rev_icon} Doanh thu: {'+' if rev_delta >= 0 else ''}{_money(rev_delta)} VND")
+        leads_delta = delta.get("leads", 0)
+        leads_icon = "🔼" if leads_delta >= 0 else "🔽"
+        lines.append(f"  {leads_icon} Leads: {'+' if leads_delta >= 0 else ''}{leads_delta}")
+        coll_delta = delta.get("collections", 0)
+        coll_icon = "🔼" if coll_delta >= 0 else "🔽"
+        lines.append(f"  {coll_icon} Thu hồi nợ: {'+' if coll_delta >= 0 else ''}{_money(coll_delta)} VND")
+
     _dq(lines, d)
     return "\n".join(lines)
 
@@ -597,16 +751,16 @@ FORMATTERS = {
     "/brief_cash": format_brief_cash,
     "/hunter_today": format_hunter_today,
     "/hunter_sla": format_hunter_sla,
-    "/hunter_quotes": format_hunter_today,
-    "/hunter_first_orders": format_hunter_today,
-    "/hunter_sources": format_hunter_today,
-    "/khachmoi_homnay": format_hunter_today,
+    "/hunter_quotes": lambda raw: format_hunter_today(raw, section_override="quotes"),
+    "/hunter_first_orders": lambda raw: format_hunter_today(raw, section_override="first_orders"),
+    "/hunter_sources": lambda raw: format_hunter_today(raw, section_override="sources"),
+    "/khachmoi_homnay": lambda raw: format_hunter_today(raw, section_override="overview"),
     "/farmer_today": format_farmer_today,
-    "/farmer_reorder": format_farmer_today,
-    "/farmer_sleeping": format_farmer_today,
-    "/farmer_vip": format_farmer_today,
+    "/farmer_reorder": lambda raw: format_farmer_today(raw, section_override="reorder"),
+    "/farmer_sleeping": lambda raw: format_farmer_today(raw, section_override="sleeping"),
+    "/farmer_vip": lambda raw: format_farmer_today(raw, section_override="vip"),
     "/farmer_ar": format_farmer_ar,
-    "/farmer_retention": format_farmer_today,
+    "/farmer_retention": lambda raw: format_farmer_today(raw, section_override="retention"),
     "/congno_denhan": lambda raw: format_congno(raw, "due_soon"),
     "/congno_quahan": lambda raw: format_congno(raw, "overdue"),
     "/task_quahan": format_task_overdue,
