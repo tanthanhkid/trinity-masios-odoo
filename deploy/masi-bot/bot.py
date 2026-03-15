@@ -117,14 +117,20 @@ async def send_long_message(update: Update, text: str):
     async def send_chunk(chunk: str):
         import re as _re
         from telegram.error import BadRequest
-        # Try HTML first (convert markdown if needed)
+        # 1. Try raw HTML first (formatter output is already valid HTML)
+        try:
+            await update.message.reply_text(chunk, parse_mode="HTML")
+            return
+        except BadRequest:
+            pass
+        # 2. Try markdown→HTML conversion (LLM output is markdown)
         html = md_to_html(chunk)
         try:
             await update.message.reply_text(html, parse_mode="HTML")
             return
         except BadRequest as e:
-            logger.debug("HTML parse failed, trying plain: %s", e)
-        # Fallback: plain text (strip HTML tags)
+            logger.debug("HTML parse also failed, trying plain: %s", e)
+        # 3. Fallback: plain text (strip HTML tags)
         plain = _re.sub(r'<[^>]+>', '', chunk)
         await update.message.reply_text(plain)
 
