@@ -345,7 +345,9 @@ mcp = FastMCP(
     "odoo",
     instructions="Real-time Odoo introspection and CRUD via XML-RPC",
     transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
+        # DNS rebinding protection disabled — Bearer token auth handles security.
+        # Re-enabling blocks localhost connections (bot → MCP on same server).
+        enable_dns_rebinding_protection=False,
     ),
 )
 
