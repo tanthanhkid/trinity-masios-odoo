@@ -154,7 +154,9 @@ def format_revenue_today(raw: str) -> str:
     else:
         lines.append(f"💰 <b>Tổng:</b> {_money(total)} VND")
         for item in breakdown:
-            lines.append(f"  • {item.get('team', '?')}: {_money(item.get('amount', 0))} VND ({item.get('count', 0)} đơn)")
+            team = item.get('team', item.get('order_type', '?'))
+            amount = item.get('amount', item.get('revenue', 0))
+            lines.append(f"  • {team}: {_money(amount)} VND ({item.get('count', 0)} đơn)")
 
     _dq(lines, d)
     return "\n".join(lines)
@@ -218,12 +220,22 @@ def format_brief_ar(raw: str) -> str:
     aging = _val(d, "aging", "aging_buckets", "buckets", default=[])
     if aging:
         lines.append("📅 <b>Theo tuổi nợ:</b>")
-        for b in aging:
-            if isinstance(b, dict):
-                name = _val(b, "bucket", "label", "name", default="?")
-                amt = _money(_val(b, "amount", "total", default=0))
-                cnt = _val(b, "count", "invoice_count", default=0)
-                lines.append(f"  • {name}: {amt} VND ({cnt} HĐ)")
+        if isinstance(aging, dict):
+            # MCP returns aging_buckets as dict: {current, 1_30, 31_60, 61_90, 90_plus}
+            bucket_labels = [("current", "Hiện tại"), ("1_30", "1-30 ngày"), ("31_60", "31-60 ngày"),
+                             ("61_90", "61-90 ngày"), ("90_plus", "90+ ngày")]
+            for key, label in bucket_labels:
+                val = aging.get(key, 0)
+                if val:
+                    lines.append(f"  • {label}: {_money(val)} VND")
+        else:
+            # Fallback: list of dicts [{bucket, amount, count}, ...]
+            for b in aging:
+                if isinstance(b, dict):
+                    name = _val(b, "bucket", "label", "name", default="?")
+                    amt = _money(_val(b, "amount", "total", default=0))
+                    cnt = _val(b, "count", "invoice_count", default=0)
+                    lines.append(f"  • {name}: {amt} VND ({cnt} HĐ)")
         lines.append("")
 
     debtors = _val(d, "top_debtors", "top_customers", default=[])
