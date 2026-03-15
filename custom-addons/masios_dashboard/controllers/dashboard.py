@@ -1,8 +1,11 @@
 import json
+import logging
 from datetime import datetime, timedelta
 
 from odoo import fields, http
 from odoo.http import request
+
+_logger = logging.getLogger(__name__)
 
 
 class DashboardController(http.Controller):
@@ -17,13 +20,22 @@ class DashboardController(http.Controller):
     def dashboard_data(self, **kwargs):
         if not request.env.user.has_group('sales_team.group_sale_manager'):
             return request.make_json_response({'error': 'Access denied'}, status=403)
-        data = {
-            'kpis': self._get_kpis(),
-            'pipeline': self._get_pipeline(),
-            'recent_orders': self._get_recent_orders(),
-            'invoices': self._get_invoices(),
-            'credit_alerts': self._get_credit_alerts(),
-        }
+        data = {}
+        for key, getter in [
+            ('kpis', self._get_kpis),
+            ('pipeline', self._get_pipeline),
+            ('recent_orders', self._get_recent_orders),
+            ('invoices', self._get_invoices),
+            ('credit_alerts', self._get_credit_alerts),
+        ]:
+            try:
+                data[key] = getter()
+            except Exception as e:
+                _logger.error("Dashboard %s failed: %s", key, e, exc_info=True)
+                data[key] = [] if key != 'kpis' else {
+                    'pipeline_value': 0, 'monthly_revenue': 0,
+                    'total_debt': 0, 'new_leads': 0,
+                }
         return request.make_json_response(data)
 
     def _get_kpis(self):

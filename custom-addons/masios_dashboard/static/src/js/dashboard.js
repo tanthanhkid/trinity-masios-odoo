@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', function () {
         'done': 'Hoàn thành',
         'cancel': 'Đã hủy',
     };
+    const VALID_STATES = Object.keys(STATE_LABELS);
 
     fetch('/dashboard/data')
         .then(r => r.json())
@@ -62,7 +63,8 @@ document.addEventListener('DOMContentLoaded', function () {
             // Recent Orders
             const ordersBody = document.querySelector('#orders-table tbody');
             data.recent_orders.forEach(o => {
-                const stateClass = 'state-' + esc(o.state);
+                const safeState = VALID_STATES.includes(o.state) ? o.state : 'unknown';
+                const stateClass = 'state-' + safeState;
                 const stateLabel = STATE_LABELS[o.state] || esc(o.state);
                 ordersBody.innerHTML += `<tr>
                     <td>${esc(o.name)}</td>

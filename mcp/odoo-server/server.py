@@ -1312,26 +1312,23 @@ def odoo_morning_brief() -> str:
     )
     farmer_revenue = (farmer_rev_group[0]["amount_total"] or 0) if farmer_rev_group else 0
 
-    # Sleeping customers (no order in 90+ days) — approximate
+    # Sleeping customers (no order in 90+ days) — use read_group for accuracy
     cutoff_90 = (date.today() - timedelta(days=90)).isoformat()
     sleeping_count = 0
     try:
-        all_customers = client.search_read(
+        total_old_customers = client.search_count(
             "res.partner",
             [("customer_classification", "=", "old")],
-            fields=["id"],
-            limit=500,
         )
-        if all_customers:
-            cust_ids = [c["id"] for c in all_customers]
-            active_orders = client.search_read(
-                "sale.order",
-                [("partner_id", "in", cust_ids), ("date_order", ">=", cutoff_90), ("state", "in", ("sale", "done"))],
-                fields=["partner_id"],
-                limit=500,
-            )
-            active_cust_ids = set(o["partner_id"][0] for o in active_orders if o.get("partner_id"))
-            sleeping_count = len(set(cust_ids) - active_cust_ids)
+        # Get distinct partners with recent orders via read_group
+        active_groups = _safe_read_group(
+            client, "sale.order",
+            [("date_order", ">=", cutoff_90), ("state", "in", ("sale", "done")),
+             ("partner_id.customer_classification", "=", "old")],
+            ["partner_id"], ["partner_id"],
+        )
+        active_count = len(active_groups)
+        sleeping_count = max(0, total_old_customers - active_count)
     except Exception as e:
         logger.warning(f"Sleeping customer calc failed: {e}")
 
@@ -1711,56 +1708,47 @@ def odoo_brief_farmer(period: str = "month") -> str:
     repeat_order_revenue = (ro_group[0]["amount_total"] or 0) if ro_group else 0
 
     # Sleeping customers by bucket (30-60d, 60-90d, 90d+)
-    customers = client.search_read(
-        "res.partner",
-        [("customer_classification", "=", "old")],
-        fields=["id", "name"],
-        limit=500,
-    )
-    cust_ids = [c["id"] for c in customers]
-
+    # Use read_group to get max(date_order) per partner — no record limit issue
+    total_old = client.search_count("res.partner", [("customer_classification", "=", "old")])
+    cutoffs = {
+        "30d": (today_date - timedelta(days=30)).isoformat(),
+        "60d": (today_date - timedelta(days=60)).isoformat(),
+        "90d": (today_date - timedelta(days=90)).isoformat(),
+    }
     buckets = {"30_60d": 0, "60_90d": 0, "90d_plus": 0}
-    if cust_ids:
-        cutoffs = {
-            "30d": (today_date - timedelta(days=30)).isoformat(),
-            "60d": (today_date - timedelta(days=60)).isoformat(),
-            "90d": (today_date - timedelta(days=90)).isoformat(),
-        }
-        # Get last order date per customer
-        for cutoff_name, intervals in [
-            ("90d_plus", (None, cutoffs["90d"])),
-            ("60_90d", (cutoffs["90d"], cutoffs["60d"])),
-            ("30_60d", (cutoffs["60d"], cutoffs["30d"])),
-        ]:
-            # Customers with NO order since the interval start
-            pass  # Simplified: count customers whose last order falls in each bucket
 
-        # Simplified approach: get all recent orders and classify
-        recent_orders = client.search_read(
-            "sale.order",
-            [("partner_id", "in", cust_ids), ("state", "in", ("sale", "done"))],
-            fields=["partner_id", "date_order"],
-            limit=500, order="date_order desc",
-        )
-        last_order = {}
-        for o in recent_orders:
-            pid = o["partner_id"][0] if o["partner_id"] else None
-            if pid and pid not in last_order:
-                last_order[pid] = str(o["date_order"])[:10]
+    # Count partners with last order in each bucket via read_group
+    active_30 = _safe_read_group(
+        client, "sale.order",
+        [("state", "in", ("sale", "done")), ("date_order", ">=", cutoffs["30d"]),
+         ("partner_id.customer_classification", "=", "old")],
+        ["partner_id"], ["partner_id"],
+    )
+    active_60 = _safe_read_group(
+        client, "sale.order",
+        [("state", "in", ("sale", "done")), ("date_order", ">=", cutoffs["60d"]),
+         ("date_order", "<", cutoffs["30d"]),
+         ("partner_id.customer_classification", "=", "old")],
+        ["partner_id"], ["partner_id"],
+    )
+    active_90 = _safe_read_group(
+        client, "sale.order",
+        [("state", "in", ("sale", "done")), ("date_order", ">=", cutoffs["90d"]),
+         ("date_order", "<", cutoffs["60d"]),
+         ("partner_id.customer_classification", "=", "old")],
+        ["partner_id"], ["partner_id"],
+    )
+    # Partners active in last 30d
+    active_30_ids = set(g["partner_id"][0] for g in active_30 if g.get("partner_id"))
+    # Partners whose last order is 30-60d (active in 60d but NOT in 30d)
+    active_60_ids = set(g["partner_id"][0] for g in active_60 if g.get("partner_id"))
+    # Partners whose last order is 60-90d
+    active_90_ids = set(g["partner_id"][0] for g in active_90 if g.get("partner_id"))
 
-        for cid in cust_ids:
-            lo = last_order.get(cid)
-            if not lo:
-                buckets["90d_plus"] += 1
-                continue
-            lo_date = date.fromisoformat(lo)
-            days_since = (today_date - lo_date).days
-            if days_since >= 90:
-                buckets["90d_plus"] += 1
-            elif days_since >= 60:
-                buckets["60_90d"] += 1
-            elif days_since >= 30:
-                buckets["30_60d"] += 1
+    buckets["30_60d"] = len(active_60_ids - active_30_ids)
+    buckets["60_90d"] = len(active_90_ids - active_30_ids - active_60_ids)
+    all_active_90d = active_30_ids | active_60_ids | active_90_ids
+    buckets["90d_plus"] = max(0, total_old - len(all_active_90d))
 
     # Farmer AR total
     ar_domain = [("move_type", "=", "out_invoice"), ("state", "=", "posted"), ("amount_residual", ">", 0)]
@@ -2133,19 +2121,19 @@ def odoo_farmer_today(section: str = "all") -> str:
     cust_ids = [c["id"] for c in customers]
     cust_map = {c["id"]: c["name"] for c in customers}
 
-    # Get last order per customer
+    # Get last order per customer via read_group (no record limit issue)
     last_order = {}
     if cust_ids:
-        orders = client.search_read(
-            "sale.order",
+        order_groups = _safe_read_group(
+            client, "sale.order",
             [("partner_id", "in", cust_ids), ("state", "in", ("sale", "done"))],
-            fields=["partner_id", "date_order"],
-            limit=500, order="date_order desc",
+            ["partner_id", "date_order:max"], ["partner_id"],
         )
-        for o in orders:
-            pid = o["partner_id"][0] if o["partner_id"] else None
-            if pid and pid not in last_order:
-                last_order[pid] = str(o["date_order"])[:10]
+        for g in order_groups:
+            pid = g["partner_id"][0] if g.get("partner_id") else None
+            max_date = g.get("date_order") or ""
+            if pid and max_date:
+                last_order[pid] = str(max_date)[:10]
 
     if section in ("all", "overview"):
         so_domain = [("state", "in", ("sale", "done")),

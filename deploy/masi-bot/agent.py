@@ -448,7 +448,9 @@ class MasiAgent:
                     continue
                 return "⏱️ Request timeout. Vui lòng thử lại."
             except anthropic.APIError as e:
-                return f"❌ Lỗi LLM: {e.message}"
+                return f"❌ Lỗi LLM: {e}"
+
+        return "⚠️ Không thể xử lý. Vui lòng thử lại."
 
     async def _check_tool_permission(self, tool_name: str, user_id: int) -> str | None:
         """Check if user has permission to call a tool. Returns error message or None."""
@@ -500,7 +502,7 @@ class MasiAgent:
                 return "⏱️ Request timeout. Vui lòng thử lại."
             except anthropic.APIError as e:
                 logger.error("LLM API error on turn %d: %s", turn + 1, e)
-                return f"❌ Lỗi hệ thống LLM: {e.message}"
+                return f"❌ Lỗi hệ thống LLM: {e}"
 
             tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
 
