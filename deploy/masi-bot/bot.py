@@ -8,11 +8,14 @@ Uses python-telegram-bot v21.x (fully async).
 import asyncio
 import base64
 import io
+import json
 import logging
+import re as _re
 
 from telegram import Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -20,7 +23,7 @@ from telegram.ext import (
 )
 
 from agent import MasiAgent
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_WHITELIST
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_WHITELIST, CEO_CHAT_ID
 from mcp_client import OdooMCPClient
 
 logging.basicConfig(
@@ -41,6 +44,9 @@ CONVERSATION_TTL = 3600  # 1 hour TTL for inactive conversations
 
 # Each entry: {"messages": list, "last_active": float}
 conversations: dict[int, dict] = {}
+
+# Track pending reject callbacks: {user_id: request_id}
+_pending_rejects: dict[int, int] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -112,10 +118,8 @@ async def check_whitelist(update: Update) -> bool:
 async def send_long_message(update: Update, text: str):
     """Split and send messages that exceed Telegram's 4096 char limit.
     Tries HTML first, falls back to plain text."""
-    import re
 
     async def send_chunk(chunk: str):
-        import re as _re
         from telegram.error import BadRequest
         # 1. Try raw HTML first (formatter output is already valid HTML)
         try:
@@ -163,10 +167,9 @@ def md_to_html(text: str) -> str:
     Telegram HTML supports: <b>, <i>, <u>, <s>, <code>, <pre>,
     <a href>, <blockquote>, <tg-spoiler>. NO tables, lists, or headers.
     """
-    import re
 
     # --- 1. Convert Markdown tables to aligned text ---
-    def convert_table(match: re.Match) -> str:
+    def convert_table(match: _re.Match) -> str:
         lines = match.group(0).strip().split("\n")
         rows = []
         for line in lines:
@@ -174,7 +177,7 @@ def md_to_html(text: str) -> str:
             if not line.startswith("|"):
                 continue
             # Skip separator rows (|---|---|)
-            if re.match(r'^\|[\s\-:|]+\|$', line):
+            if _re.match(r'^\|[\s\-:|]+\|$', line):
                 continue
             cells = [c.strip() for c in line.strip("|").split("|")]
             rows.append(cells)
@@ -200,11 +203,11 @@ def md_to_html(text: str) -> str:
         return "\n".join(result)
 
     # Match markdown tables (lines starting with |)
-    text = re.sub(
+    text = _re.sub(
         r'(?:^\|.+\|$\n?){2,}',
         convert_table,
         text,
-        flags=re.MULTILINE,
+        flags=_re.MULTILINE,
     )
 
     # --- 2. Code blocks FIRST (protect from other transforms) ---
@@ -212,13 +215,13 @@ def md_to_html(text: str) -> str:
     def save_code(m):
         code_blocks.append(m.group(1))
         return f"\x00CODE{len(code_blocks)-1}\x00"
-    text = re.sub(r'```(?:\w*\n)?(.*?)```', save_code, text, flags=re.DOTALL)
+    text = _re.sub(r'```(?:\w*\n)?(.*?)```', save_code, text, flags=_re.DOTALL)
 
     inline_codes = []
     def save_inline(m):
         inline_codes.append(m.group(1))
         return f"\x00INLINE{len(inline_codes)-1}\x00"
-    text = re.sub(r'`(.+?)`', save_inline, text)
+    text = _re.sub(r'`(.+?)`', save_inline, text)
 
     # --- 3. Escape HTML special chars (outside code) ---
     text = text.replace("&", "&amp;")
@@ -227,28 +230,28 @@ def md_to_html(text: str) -> str:
 
     # --- 4. Markdown → HTML ---
     # Headers → bold
-    text = re.sub(r'^#{1,6}\s+(.+)$', r'<b>\1</b>', text, flags=re.MULTILINE)
+    text = _re.sub(r'^#{1,6}\s+(.+)$', r'<b>\1</b>', text, flags=_re.MULTILINE)
     # Bold: **text**
-    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = _re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     # Italic: *text* (not inside bold tags)
-    text = re.sub(r'(?<![*])\*([^*]+?)\*(?![*])', r'<i>\1</i>', text)
+    text = _re.sub(r'(?<![*])\*([^*]+?)\*(?![*])', r'<i>\1</i>', text)
     # Underline: __text__
-    text = re.sub(r'__(.+?)__', r'<u>\1</u>', text)
+    text = _re.sub(r'__(.+?)__', r'<u>\1</u>', text)
     # Strikethrough: ~~text~~
-    text = re.sub(r'~~(.+?)~~', r'<s>\1</s>', text)
+    text = _re.sub(r'~~(.+?)~~', r'<s>\1</s>', text)
     # Links: [text](url) — only allow http(s) URLs
     def _safe_link(m):
         link_text, url = m.group(1), m.group(2)
         if url.startswith(("http://", "https://")):
             return f'<a href="{url}">{link_text}</a>'
         return link_text
-    text = re.sub(r'\[(.+?)\]\((.+?)\)', _safe_link, text)
+    text = _re.sub(r'\[(.+?)\]\((.+?)\)', _safe_link, text)
     # Blockquote: > text
-    text = re.sub(r'^&gt;\s?(.+)$', r'<blockquote>\1</blockquote>', text, flags=re.MULTILINE)
+    text = _re.sub(r'^&gt;\s?(.+)$', r'<blockquote>\1</blockquote>', text, flags=_re.MULTILINE)
     # Merge adjacent blockquotes
     text = text.replace("</blockquote>\n<blockquote>", "\n")
     # Horizontal rules: --- or ***
-    text = re.sub(r'^[\-\*]{3,}$', '─' * 20, text, flags=re.MULTILINE)
+    text = _re.sub(r'^[\-\*]{3,}$', '─' * 20, text, flags=_re.MULTILINE)
 
     # --- 5. Restore code blocks ---
     for i, code in enumerate(code_blocks):
@@ -289,12 +292,89 @@ async def slash_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------
+# Credit Approval Callback Handler
+# ---------------------------------------------------------------------------
+async def handle_credit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle inline button callbacks for credit approval/rejection."""
+    query = update.callback_query
+    await query.answer()  # Acknowledge the callback
+
+    user_id = query.from_user.id
+    data = query.data  # e.g. "credit_approve_123" or "credit_reject_123"
+
+    # Only CEO can approve/reject
+    if user_id != CEO_CHAT_ID:
+        await query.answer("🚫 Chỉ CEO mới có quyền phê duyệt.", show_alert=True)
+        return
+
+    logger.info("Credit callback: user=%s data=%s", user_id, data)
+
+    if data.startswith("credit_approve_"):
+        request_id = int(data.replace("credit_approve_", ""))
+        try:
+            result = await mcp_client.call_tool("odoo_approve_credit", {
+                "request_id": request_id,
+                "approved_by": query.from_user.full_name or "CEO",
+            })
+            result_data = json.loads(result) if isinstance(result, str) else result
+            if "error" in result_data:
+                await query.answer(f"❌ {result_data['error']}", show_alert=True)
+            else:
+                # The Odoo model will update the Telegram message via API
+                logger.info("Credit approval %d approved via Telegram", request_id)
+        except Exception as e:
+            logger.error("Credit approve callback failed: %s", e)
+            await query.answer(f"❌ Lỗi: {e}", show_alert=True)
+
+    elif data.startswith("credit_reject_"):
+        request_id = int(data.replace("credit_reject_", ""))
+        # Store pending reject — next message from CEO will be the reason
+        _pending_rejects[user_id] = request_id
+        await query.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"📝 Nhập lý do từ chối cho yêu cầu #{request_id}:\n"
+                 f"(Hoặc gõ /cancel để hủy)",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Message handler
 # ---------------------------------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_whitelist(update):
         return
-    await handle_message_internal(update, update.message.text)
+
+    user_id = update.effective_user.id
+    text = update.message.text
+
+    # Check if CEO is providing reject reason
+    if user_id in _pending_rejects:
+        request_id = _pending_rejects.pop(user_id)
+        if text.strip().lower() == "/cancel":
+            await update.message.reply_text("❌ Đã hủy từ chối.")
+            return
+
+        try:
+            result = await mcp_client.call_tool("odoo_reject_credit", {
+                "request_id": request_id,
+                "reason": text.strip(),
+                "rejected_by": update.effective_user.full_name or "CEO",
+            })
+            result_data = json.loads(result) if isinstance(result, str) else result
+            if "error" in result_data:
+                await update.message.reply_text(f"❌ {result_data['error']}")
+            else:
+                await update.message.reply_text(
+                    f"❌ Đã từ chối yêu cầu #{request_id}.\nLý do: {text.strip()}"
+                )
+                logger.info("Credit approval %d rejected via Telegram", request_id)
+        except Exception as e:
+            logger.error("Credit reject callback failed: %s", e)
+            await update.message.reply_text(f"❌ Lỗi: {e}")
+        return
+
+    await handle_message_internal(update, text)
 
 
 async def keep_typing(chat, stop_event: asyncio.Event):
@@ -415,9 +495,16 @@ def main():
         "task_quahan", "midday", "eod",
         "kpi", "pipeline", "newlead", "newcustomer",
         "quote", "invoice", "credit", "findcustomer", "what_changed",
+        "pending_approvals", "approve", "reject",
     ]
     for cmd in SLASH_COMMANDS:
         app.add_handler(CommandHandler(cmd, slash_command))
+
+    # Credit approval inline button callbacks
+    app.add_handler(CallbackQueryHandler(
+        handle_credit_callback,
+        pattern=r"^credit_(approve|reject)_\d+$",
+    ))
 
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)

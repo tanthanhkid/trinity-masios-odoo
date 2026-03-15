@@ -45,6 +45,7 @@ _ALLOWED_EXECUTE_MODELS: frozenset[str] = frozenset({
     "crm.lead", "sale.order", "account.move", "res.partner",
     "project.task", "product.product", "product.template",
     "sale.order.line", "account.move.line",
+    "credit.approval.request",
 })
 
 # Sensitive models blocked from odoo_search_read/odoo_count
@@ -729,6 +730,7 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         "default_get", "onchange",
         "action_confirm", "action_quotation_send",
         "action_post", "_create_invoices",
+        "do_approve", "do_reject", "action_approve",
     }
     if method not in ALLOWED_METHODS:
         return json.dumps({
@@ -1035,6 +1037,156 @@ def odoo_customers_exceeding_credit(limit: int = 50) -> str:
     )
     exceeded = [p for p in partners if p.get("credit_exceeded")]
     return json.dumps(exceeded, indent=2, ensure_ascii=False, default=str)
+
+
+# --- Credit Approval Tools ---
+
+@mcp.tool()
+@_odoo_error
+def odoo_pending_approvals() -> str:
+    """List pending credit approval requests waiting for CEO decision.
+
+    Returns list of approval requests with sale order, customer, debt info.
+    """
+    client = get_client()
+    approvals = client.search_read(
+        "credit.approval.request",
+        [("state", "=", "pending")],
+        fields=["name", "sale_order_id", "partner_id", "salesperson_id",
+                "amount_total", "outstanding_debt", "new_total_debt",
+                "approval_threshold", "state", "create_date"],
+        order="create_date desc",
+        limit=50,
+    )
+    return json.dumps({"pending_count": len(approvals), "requests": approvals},
+                      indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_approve_credit(request_id: int, approved_by: str = "CEO") -> str:
+    """Approve a credit approval request. Auto-confirms the sale order.
+
+    Args:
+        request_id: ID of the credit.approval.request record
+        approved_by: Name of person approving (default: CEO)
+    """
+    client = get_client()
+    # Verify request exists and is pending
+    reqs = client.search_read(
+        "credit.approval.request",
+        [("id", "=", request_id)],
+        fields=["state", "name", "sale_order_id"],
+        limit=1,
+    )
+    if not reqs:
+        return json.dumps({"error": f"Approval request {request_id} not found"})
+    if reqs[0]["state"] != "pending":
+        return json.dumps({"error": f"Request {reqs[0]['name']} is already {reqs[0]['state']}"})
+
+    # Call do_approve via execute_kw
+    with client._lock:
+        client._object.execute_kw(
+            client.db, client.uid, client.password,
+            "credit.approval.request", "do_approve", [[request_id]],
+            {"approved_by": approved_by, "via": "telegram"},
+        )
+
+    # Read back the updated request
+    updated = client.search_read(
+        "credit.approval.request",
+        [("id", "=", request_id)],
+        fields=["name", "state", "sale_order_id", "partner_id",
+                "approved_by", "approved_date"],
+        limit=1,
+    )
+    # Also get the sale order state
+    if updated:
+        so_id = updated[0]["sale_order_id"][0] if updated[0].get("sale_order_id") else None
+        if so_id:
+            so = client.search_read(
+                "sale.order", [("id", "=", so_id)],
+                fields=["name", "state", "amount_total"],
+                limit=1,
+            )
+            updated[0]["sale_order_state"] = so[0]["state"] if so else "unknown"
+
+    return json.dumps({"approved": updated[0] if updated else {"id": request_id}},
+                      indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_reject_credit(request_id: int, reason: str = "", rejected_by: str = "CEO") -> str:
+    """Reject a credit approval request. Sale order stays in draft.
+
+    Args:
+        request_id: ID of the credit.approval.request record
+        reason: Reason for rejection
+        rejected_by: Name of person rejecting (default: CEO)
+    """
+    client = get_client()
+    # Verify request exists and is pending
+    reqs = client.search_read(
+        "credit.approval.request",
+        [("id", "=", request_id)],
+        fields=["state", "name"],
+        limit=1,
+    )
+    if not reqs:
+        return json.dumps({"error": f"Approval request {request_id} not found"})
+    if reqs[0]["state"] != "pending":
+        return json.dumps({"error": f"Request {reqs[0]['name']} is already {reqs[0]['state']}"})
+
+    with client._lock:
+        client._object.execute_kw(
+            client.db, client.uid, client.password,
+            "credit.approval.request", "do_reject", [[request_id]],
+            {"rejected_by": rejected_by, "reason": reason, "via": "telegram"},
+        )
+
+    updated = client.search_read(
+        "credit.approval.request",
+        [("id", "=", request_id)],
+        fields=["name", "state", "partner_id", "approved_by",
+                "reject_reason", "approved_date"],
+        limit=1,
+    )
+    return json.dumps({"rejected": updated[0] if updated else {"id": request_id}},
+                      indent=2, ensure_ascii=False, default=str)
+
+
+@mcp.tool()
+@_odoo_error
+def odoo_approval_history(
+    state: str = "",
+    partner_id: int = 0,
+    limit: int = 20,
+) -> str:
+    """View credit approval history.
+
+    Args:
+        state: Filter by state: pending, approved, rejected (empty = all)
+        partner_id: Filter by customer ID (0 = all)
+        limit: Max records (default 20)
+    """
+    client = get_client()
+    domain = []
+    if state:
+        domain.append(("state", "=", state))
+    if partner_id:
+        domain.append(("partner_id", "=", partner_id))
+    approvals = client.search_read(
+        "credit.approval.request", domain,
+        fields=["name", "sale_order_id", "partner_id", "salesperson_id",
+                "amount_total", "outstanding_debt", "new_total_debt",
+                "approval_threshold", "state", "approved_by", "approved_via",
+                "approved_date", "reject_reason", "create_date"],
+        order="create_date desc",
+        limit=min(limit, 100),
+    )
+    return json.dumps({"count": len(approvals), "requests": approvals},
+                      indent=2, ensure_ascii=False, default=str)
 
 
 # --- Dashboard Tools ---

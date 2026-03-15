@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Add pending approval warning on Sale Order form -->
+    <record id="sale_order_form_credit_approval" model="ir.ui.view">
+        <field name="name">sale.order.form.credit.approval</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form/header" position="after">
+                <field name="credit_approval_pending" invisible="1"/>
+                <div class="alert alert-warning text-center mb-0" role="alert"
+                    invisible="not credit_approval_pending">
+                    <strong>⏳ Đơn hàng đang chờ CEO phê duyệt công nợ</strong>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

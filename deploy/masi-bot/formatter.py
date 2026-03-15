@@ -689,6 +689,40 @@ def format_credit(raw: str) -> str:
     return "\n".join(lines)
 
 
+def format_pending_approvals(raw: str) -> str:
+    d = _safe_json(raw)
+    pending_count = d.get("pending_count", 0)
+    requests = d.get("requests", [])
+
+    lines = [f"📋 <b>YÊU CẦU PHÊ DUYỆT CÔNG NỢ</b> ({pending_count} chờ duyệt)", ""]
+
+    if not requests:
+        lines.append("✅ Không có yêu cầu nào chờ duyệt.")
+        return "\n".join(lines)
+
+    for req in requests[:10]:
+        if isinstance(req, dict):
+            name = req.get("name", "?")
+            so = req.get("sale_order_id", [0, "?"])
+            so_name = so[1] if isinstance(so, list) and len(so) > 1 else str(so)
+            partner = req.get("partner_id", [0, "?"])
+            partner_name = partner[1] if isinstance(partner, list) and len(partner) > 1 else str(partner)
+            amount = _money(req.get("amount_total", 0))
+            debt = _money(req.get("outstanding_debt", 0))
+            new_total = _money(req.get("new_total_debt", 0))
+
+            lines.append(f"📋 <b>{name}</b>")
+            lines.append(f"  • Đơn: {so_name} — KH: {partner_name}")
+            lines.append(f"  • Giá trị: {amount} VND | Nợ hiện tại: {debt} VND")
+            lines.append(f"  • Tổng nợ mới: {new_total} VND")
+            lines.append("")
+
+    if len(requests) > 10:
+        lines.append(f"  ... +{len(requests) - 10} yêu cầu khác")
+
+    return "\n".join(lines)
+
+
 def _format_generic(lines: list, d):
     """Generic formatter — iterate dict keys and render values."""
     if not isinstance(d, dict):
@@ -769,6 +803,7 @@ FORMATTERS = {
     "/kpi": format_kpi,
     "/pipeline": format_pipeline,
     "/credit": format_credit,
+    "/pending_approvals": format_pending_approvals,
 }
 
 

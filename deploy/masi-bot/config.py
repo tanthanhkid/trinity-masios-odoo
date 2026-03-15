@@ -7,11 +7,17 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Startup validation: fail fast with clear message if env vars missing
 # ---------------------------------------------------------------------------
-_REQUIRED_VARS = ["TELEGRAM_BOT_TOKEN", "ALIBABA_API_KEY", "ODOO_MCP_URL"]
+_REQUIRED_VARS = ["TELEGRAM_BOT_TOKEN", "ODOO_MCP_URL"]
 _missing = [v for v in _REQUIRED_VARS if not os.environ.get(v)]
 if _missing:
     print(f"ERROR: Missing required environment variables: {', '.join(_missing)}", file=sys.stderr)
     print("Check your .env file or environment configuration.", file=sys.stderr)
+    sys.exit(1)
+
+# LLM API key — support both old (ALIBABA_API_KEY) and new (LLM_API_KEY)
+_llm_key = os.environ.get("LLM_API_KEY") or os.environ.get("ALIBABA_API_KEY", "")
+if not _llm_key:
+    print("ERROR: Missing LLM_API_KEY or ALIBABA_API_KEY", file=sys.stderr)
     sys.exit(1)
 
 # Telegram
@@ -24,16 +30,19 @@ TELEGRAM_WHITELIST = (
     else _default_whitelist
 )
 
+CEO_CHAT_ID = 2048339435
+
 TEST_USERS = {
-    "ceo": 2048339435,
+    "ceo": CEO_CHAT_ID,
     "hunter": 1481072032,
     "farmer": 5001000001,
 }
 
-# GLM-5 via Alibaba (Anthropic-compatible)
-LLM_BASE_URL = "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic"
-LLM_API_KEY = os.environ["ALIBABA_API_KEY"]
-LLM_MODEL = "qwen3-coder-next"
+# LLM Backend — OpenRouter (OpenAI-compatible)
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")  # "openai" or "anthropic"
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+LLM_API_KEY = _llm_key
+LLM_MODEL = os.environ.get("LLM_MODEL", "google/gemini-3.1-flash-lite-preview")
 
 # Odoo MCP Server — no default fallback to production
 MCP_SERVER_URL = os.environ["ODOO_MCP_URL"]

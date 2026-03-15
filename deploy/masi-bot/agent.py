@@ -1,8 +1,9 @@
-import anthropic
 import asyncio
 import json
 import logging
 import re
+
+from openai import OpenAI, APITimeoutError, APIError
 
 from config import LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, SYSTEM_PROMPT
 from formatter import format_command
@@ -41,6 +42,7 @@ COMMAND_TOOL_MAP = {
     "/kpi": ("odoo_dashboard_kpis", {}),
     "/pipeline": ("odoo_pipeline_by_stage", {}),
     "/credit": ("odoo_customers_exceeding_credit", {}),
+    "/pending_approvals": ("odoo_pending_approvals", {}),
 }
 
 # Build reverse mapping at module load
@@ -101,6 +103,22 @@ def _pdf_summary(pdf_data: dict) -> str:
     }, ensure_ascii=False)
 
 
+def _mcp_tools_to_openai(mcp_tools: list[dict]) -> list[dict]:
+    """Convert MCP/Anthropic tool format to OpenAI tool format."""
+    openai_tools = []
+    for t in mcp_tools:
+        schema = t.get("input_schema", {"type": "object", "properties": {}})
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t.get("description", ""),
+                "parameters": schema,
+            },
+        })
+    return openai_tools
+
+
 class MasiAgent:
     MAX_TOOL_ROUNDS = 5
     MAX_TOKENS = 4096
@@ -108,16 +126,16 @@ class MasiAgent:
 
     def __init__(self, mcp_client):
         self.mcp = mcp_client
-        self.client = anthropic.Anthropic(
+        self.client = OpenAI(
             base_url=LLM_BASE_URL,
             api_key=LLM_API_KEY,
             timeout=60.0,
         )
         # Per-user PDF queues to prevent cross-user PDF leaks
         self._pending_pdfs: dict[int, list[dict]] = {}
-        # Tracks last found entity per user: {user_id: {"type": ..., "id": ..., "name": ..., "_ts": float}}
+        # Tracks last found entity per user
         self._active_contexts: dict[int, dict] = {}
-        self._CONTEXT_TTL = 3600  # 1 hour TTL for stale contexts
+        self._CONTEXT_TTL = 3600
 
     def cleanup_user(self, user_id: int):
         """Remove stale data for a user (called from bot.py cleanup)."""
@@ -132,15 +150,13 @@ class MasiAgent:
                  if now - ctx.get("_ts", 0) > self._CONTEXT_TTL]
         for uid in stale:
             del self._active_contexts[uid]
-        # Also evict orphaned PDF queues
         stale_pdfs = [uid for uid, pdfs in self._pending_pdfs.items() if not pdfs]
         for uid in stale_pdfs:
             del self._pending_pdfs[uid]
 
     def pop_pending_pdfs(self, user_id: int = 0) -> list[dict]:
         """Retrieve and clear pending PDF attachments for a specific user."""
-        pdfs = self._pending_pdfs.pop(user_id, [])
-        return pdfs
+        return self._pending_pdfs.pop(user_id, [])
 
     async def chat(self, messages: list[dict], telegram_user_id: int) -> str:
         tools = self.mcp.get_anthropic_tools()
@@ -160,15 +176,15 @@ class MasiAgent:
             self._active_contexts.pop(telegram_user_id, None)
             return await self._fast_command(cmd, system, telegram_user_id, tools)
 
-        # Stub: /what_changed (no read audit tool yet)
+        # Stub: /what_changed
         if cmd == "/what_changed":
             return "🚧 <b>/what_changed</b> — đang phát triển\n\nTính năng xem lịch sử thay đổi dữ liệu sẽ có trong phiên bản tiếp theo."
 
-        # Clear active context on any slash command (not just mapped ones)
+        # Clear active context on any slash command
         if last_msg.strip().startswith("/"):
             self._active_contexts.pop(telegram_user_id, None)
 
-        # Quick reply guard: "ok", "cảm ơn", etc. → canned response, no LLM
+        # Quick reply guard
         quick = self._quick_reply(last_msg)
         if quick:
             return quick
@@ -181,7 +197,6 @@ class MasiAgent:
 
     @staticmethod
     def _quick_reply(msg: str) -> str | None:
-        """Return canned response for simple acknowledgements. Skip LLM entirely."""
         import random
         normalized = msg.strip().lower().rstrip("!.?")
         for p in _QUICK_PATTERNS:
@@ -198,7 +213,6 @@ class MasiAgent:
         if last_user.startswith("/"):
             return msgs
 
-        # --- 0. Persistent active context (most reliable source) ---
         drill_keywords = [
             "lịch sử", "đơn hàng", "nợ", "credit", "thanh toán", "mua gì",
             "chi tiết", "thông tin", "xếp hạng", "revenue", "doanh thu",
@@ -213,43 +227,31 @@ class MasiAgent:
             entity_type = active["type"]
             entity_id = active["id"]
             entity_name = active.get("name") or entity_id
-            if entity_type == "partner":
-                hint = (
-                    f"User đang trong drill-down về KH '{entity_name}' (partner_id={entity_id}). "
-                    f"Câu hỏi '{last_user}' là VỀ KH NÀY. KHÔNG search_read tên KH mới. "
-                    f"Dùng domain=[['partner_id','=',{entity_id}]] hoặc partner_id={entity_id} trực tiếp."
-                )
-            elif entity_type == "order":
-                hint = (
-                    f"User đang xem Sale Order '{entity_name}' (order_id={entity_id}). "
-                    f"Câu hỏi '{last_user}' là VỀ ĐƠN HÀNG NÀY."
-                )
-            elif entity_type == "invoice":
-                hint = (
-                    f"User đang xem Invoice '{entity_name}' (invoice_id={entity_id}). "
-                    f"Câu hỏi '{last_user}' là VỀ HÓA ĐƠN NÀY."
-                )
-            else:
-                hint = None
+            hint_map = {
+                "partner": f"User đang trong drill-down về KH '{entity_name}' (partner_id={entity_id}). "
+                           f"Câu hỏi '{last_user}' là VỀ KH NÀY. KHÔNG search_read tên KH mới. "
+                           f"Dùng domain=[['partner_id','=',{entity_id}]] hoặc partner_id={entity_id} trực tiếp.",
+                "order": f"User đang xem Sale Order '{entity_name}' (order_id={entity_id}). "
+                         f"Câu hỏi '{last_user}' là VỀ ĐƠN HÀNG NÀY.",
+                "invoice": f"User đang xem Invoice '{entity_name}' (invoice_id={entity_id}). "
+                           f"Câu hỏi '{last_user}' là VỀ HÓA ĐƠN NÀY.",
+            }
+            hint = hint_map.get(entity_type)
             if hint:
                 msgs = list(msgs)
                 msgs[-1] = {"role": "user", "content": f"[CONTEXT: {hint}]\n\n{last_user}"}
                 logger.info("Context injected (active_ctx %s=%s): '%s'", entity_type, entity_id, last_user)
                 return msgs
 
-        # Find last assistant message
         prev_assistant = None
         for m in reversed(msgs[:-1]):
             if m["role"] == "assistant":
                 prev_assistant = m["content"]
                 break
-
         if not prev_assistant:
             return msgs
-
         pa = prev_assistant.lower()
 
-        # --- 1. Short reply injection (bare numbers, single words <=20 chars) ---
         if len(last_user) <= 20:
             context_map = [
                 (["sale order", "so ", "báo giá", "quote", "số so"],
@@ -268,25 +270,18 @@ class MasiAgent:
                     logger.info("Context injected (short): '%s'", last_user)
                     return msgs
 
-        # --- 2. Drill-down injection: follow-up questions about a found entity ---
-        # Try multiple regex patterns to extract partner_id (handles HTML, bold, code formatting)
         partner_id = None
-        for pattern in [
-            r'partner_id[=:\s]*(\d+)',
-            r'<code>(\d+)</code>',
-            r'ID[:\s]*(?:<[^>]+>)*(\d+)',
-            r'id[:\s=]+(\d+)',
-        ]:
+        for pattern in [r'partner_id[=:\s]*(\d+)', r'<code>(\d+)</code>',
+                        r'ID[:\s]*(?:<[^>]+>)*(\d+)', r'id[:\s=]+(\d+)']:
             m = re.search(pattern, prev_assistant, re.IGNORECASE)
             if m:
                 partner_id = m.group(1)
                 break
 
-        # Extract partner name from various LLM response formats
         partner_name = None
         for pattern in [
-            r'<b>(Công ty[^<]+|[^<]{5,50})</b>\s*\n\s*<code>',  # <b>Name</b>\n<code>id</code>
-            r'\*\*([^*]{3,50})\*\*\s*(?:\(|partner_id|<code>)',   # **Name** (partner_id=N)
+            r'<b>(Công ty[^<]+|[^<]{5,50})</b>\s*\n\s*<code>',
+            r'\*\*([^*]{3,50})\*\*\s*(?:\(|partner_id|<code>)',
             r'(?:Tên|KH|khách hàng|customer)[:\s]*(?:<[^>]*>)*([A-ZĐÁÂĂÊÔƠƯÀẢÃẠĂẮẶẦẨẪẬÉÊẾỆÍÌỊÓÔƠỜỚỢÙÚƯỤ][^*\n<(]{2,50})',
             r'(?:tìm thấy|found|kết quả)[:\s]*\n\s*[•\-]\s*(?:<[^>]*>)*([^<\n]{3,60})',
         ]:
@@ -307,8 +302,6 @@ class MasiAgent:
             logger.info("Context injected (drill-down): partner_id=%s, msg='%s'", partner_id, last_user)
             return msgs
 
-        # --- 3. List context: follow-up on a list of leads/customers shown ---
-        # When bot just showed a list and user asks a short analytical question
         list_context_keywords = ["cần gọi ai", "ai quan trọng", "ưu tiên", "plan", "tiếp cận",
                                   "expected", "target", "focus", "tập trung"]
         if any(kw in last_user.lower() for kw in list_context_keywords) and len(last_user) <= 60:
@@ -332,60 +325,42 @@ class MasiAgent:
         try:
             data = _json.loads(tool_result) if isinstance(tool_result, str) else tool_result
             data = data.get("result", data) if isinstance(data, dict) else data
-        except Exception as e:
-            logger.debug("Entity extraction parse failed for %s: %s", tool_name, e)
+        except Exception:
             data = {}
 
-        # search_read → partner (only if exactly 1 result)
         if tool_name == "odoo_search_read" and isinstance(data, dict):
             records = data.get("records", [])
             if len(records) == 1:
                 r = records[0]
                 return {"type": "partner", "id": str(r.get("id", "")), "name": r.get("name", "")}
-
-        # customer_credit_status → partner
         if tool_name == "odoo_customer_credit_status" and isinstance(data, dict):
             pid = data.get("partner_id") or data.get("id")
-            name = data.get("name", "")
             if pid:
-                return {"type": "partner", "id": str(pid), "name": name}
-
-        # sale_order_summary → order
+                return {"type": "partner", "id": str(pid), "name": data.get("name", "")}
         if tool_name == "odoo_sale_order_summary" and isinstance(data, dict):
             oid = data.get("id") or data.get("order_id")
-            name = data.get("name", "")
             if oid:
-                return {"type": "order", "id": str(oid), "name": name}
-
-        # invoice_summary → invoice
+                return {"type": "order", "id": str(oid), "name": data.get("name", "")}
         if tool_name == "odoo_invoice_summary" and isinstance(data, dict):
             iid = data.get("id") or data.get("invoice_id")
-            name = data.get("name", "")
             if iid:
-                return {"type": "invoice", "id": str(iid), "name": name}
-
+                return {"type": "invoice", "id": str(iid), "name": data.get("name", "")}
         return None
 
     @staticmethod
     def _trim_history(msgs: list, keep: int = 8) -> list:
-        """Trim conversation history to reduce token count.
-        Preserves first 2 messages (command + initial response) + last `keep` messages.
-        This keeps the original intent AND recent context for drill-down coherence."""
         if len(msgs) <= keep + 2:
             return msgs
-        # Keep first 2 (original command context) + last `keep` (recent turns)
         anchor = msgs[:2]
         recent = msgs[-keep:]
-        # Avoid duplicates if overlap
         seen_ids = {id(m) for m in anchor}
         deduped_recent = [m for m in recent if id(m) not in seen_ids]
         trimmed = anchor + deduped_recent
-        # Ensure starts with user role (Anthropic API requirement)
         while trimmed and trimmed[0]["role"] != "user":
             trimmed = trimmed[1:]
         if not trimmed:
             return msgs
-        logger.info("History trimmed: %d → %d messages (anchor=2, recent=%d)", len(msgs), len(trimmed), len(deduped_recent))
+        logger.info("History trimmed: %d → %d messages", len(msgs), len(trimmed))
         return trimmed
 
     async def _fast_command(self, cmd: str, system: str, user_id: int, tools: list) -> str:
@@ -411,8 +386,7 @@ class MasiAgent:
         try:
             result = await self.mcp.call_tool(tool_name, tool_args)
         except Exception as e:
-            logger.error("Fast path tool %s failed: %s", tool_name, e)
-            logger.error("Fast path tool %s error detail: %s", tool_name, e, exc_info=True)
+            logger.error("Fast path tool %s failed: %s", tool_name, e, exc_info=True)
             return f"❌ Lỗi gọi tool {tool_name}. Vui lòng thử lại."
 
         # Step 3: Python template format (no LLM!)
@@ -421,44 +395,46 @@ class MasiAgent:
             logger.info("Fast path formatted: %s → %d chars (no LLM)", cmd, len(formatted))
             return formatted
 
-        # Fallback: LLM format with retry
+        # Fallback: LLM format
         logger.info("Fast path fallback to LLM format for %s", cmd)
         format_prompt = (
             f"User gõ lệnh {cmd}. Dữ liệu từ Odoo:\n\n{result}\n\n"
             "Format thành báo cáo ngắn gọn cho Telegram. Dùng emoji + bullet list. KHÔNG dùng bảng."
         )
+        openai_msgs = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": format_prompt},
+        ]
         for attempt in range(2):
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
-                        self.client.messages.create,
+                        self.client.chat.completions.create,
                         model=LLM_MODEL,
                         max_tokens=self.MAX_TOKENS,
-                        system=system,
-                        messages=[{"role": "user", "content": format_prompt}],
+                        messages=openai_msgs,
                     ),
                     timeout=self.LLM_TIMEOUT,
                 )
-                text_parts = [b.text for b in response.content if b.type == "text"]
-                return "\n".join(text_parts) or "Đã xử lý."
-            except (asyncio.TimeoutError, anthropic.APITimeoutError):
+                content = response.choices[0].message.content or ""
+                return content or "Đã xử lý."
+            except (asyncio.TimeoutError, APITimeoutError):
                 if attempt == 0:
                     logger.warning("Fast path LLM timeout, retrying...")
                     await asyncio.sleep(2)
                     continue
                 return "⏱️ Request timeout. Vui lòng thử lại."
-            except anthropic.APIError as e:
+            except APIError as e:
                 return f"❌ Lỗi LLM: {e}"
 
         return "⚠️ Không thể xử lý. Vui lòng thử lại."
 
     async def _check_tool_permission(self, tool_name: str, user_id: int) -> str | None:
         """Check if user has permission to call a tool. Returns error message or None."""
-        # Map tool to command(s) for permission check
         commands = _TOOL_TO_COMMANDS.get(tool_name)
         if not commands:
-            return None  # Not a mapped command tool, allow (generic CRUD)
-        cmd = commands[0]  # Check first mapped command
+            return None
+        cmd = commands[0]
         try:
             perm_result = await self.mcp.call_tool("odoo_telegram_check_permission", {
                 "telegram_id": str(user_id),
@@ -474,79 +450,91 @@ class MasiAgent:
         return None
 
     async def _tool_loop(self, msgs: list, system: str, tools: list, user_id: int) -> str:
-        """Full tool-calling loop for free-form messages."""
-        # Trim history to prevent context overflow and reduce latency
+        """Full tool-calling loop using OpenAI-compatible API."""
         msgs = self._trim_history(msgs, keep=8)
+
+        # Convert tools to OpenAI format
+        openai_tools = _mcp_tools_to_openai(tools)
+
+        # Build OpenAI messages: system + conversation history
+        openai_msgs = [{"role": "system", "content": system}]
+        for m in msgs:
+            if isinstance(m.get("content"), str):
+                openai_msgs.append({"role": m["role"], "content": m["content"]})
+            # Skip complex Anthropic-format tool results in history
 
         for turn in range(self.MAX_TOOL_ROUNDS):
             logger.info("LLM call turn %d/%d (user_id=%s, history=%d)",
-                        turn + 1, self.MAX_TOOL_ROUNDS, user_id, len(msgs))
+                        turn + 1, self.MAX_TOOL_ROUNDS, user_id, len(openai_msgs))
 
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
-                        self.client.messages.create,
+                        self.client.chat.completions.create,
                         model=LLM_MODEL,
                         max_tokens=self.MAX_TOKENS,
-                        system=system,
-                        messages=msgs,
-                        tools=tools,
+                        messages=openai_msgs,
+                        tools=openai_tools if openai_tools else None,
                     ),
                     timeout=self.LLM_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 logger.error("LLM hard timeout (%.0fs) on turn %d", self.LLM_TIMEOUT, turn + 1)
                 return "⏱️ Hệ thống đang tải, vui lòng thử lại sau 10 giây."
-            except anthropic.APITimeoutError:
+            except APITimeoutError:
                 logger.error("LLM SDK timeout on turn %d", turn + 1)
                 return "⏱️ Request timeout. Vui lòng thử lại."
-            except anthropic.APIError as e:
+            except APIError as e:
                 logger.error("LLM API error on turn %d: %s", turn + 1, e)
                 return f"❌ Lỗi hệ thống LLM: {e}"
 
-            tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+            choice = response.choices[0]
+            message = choice.message
+            tool_calls = message.tool_calls or []
 
-            if not tool_use_blocks:
-                text_parts = [b.text for b in response.content if b.type == "text"]
-                result_text = "\n".join(text_parts)
+            if not tool_calls:
+                result_text = message.content or ""
                 if not result_text:
-                    logger.warning("Empty LLM response on turn %d (stop_reason=%s)",
-                                   turn + 1, getattr(response, "stop_reason", "?"))
-                    return "⚠️ Hệ thống không trả về phản hồi. Hội thoại quá dài — vui lòng bắt đầu câu hỏi mới."
+                    logger.warning("Empty LLM response on turn %d (finish=%s)",
+                                   turn + 1, choice.finish_reason)
+                    return "⚠️ Hệ thống không trả về phản hồi. Vui lòng bắt đầu câu hỏi mới."
                 return result_text
 
-            msgs.append({"role": "assistant", "content": response.content})
+            # Add assistant message with tool calls
+            openai_msgs.append(message.model_dump())
 
-            tool_results = []
-            for block in tool_use_blocks:
-                logger.info(
-                    "Tool call: %s(%s)",
-                    block.name,
-                    json.dumps(block.input, ensure_ascii=False, default=str)[:500],
-                )
+            # Execute tool calls
+            for tc in tool_calls:
+                fn_name = tc.function.name
+                try:
+                    fn_args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                except json.JSONDecodeError:
+                    fn_args = {}
 
-                # RBAC enforcement: check permission before calling mapped tools
-                rbac_error = await self._check_tool_permission(block.name, user_id)
+                logger.info("Tool call: %s(%s)", fn_name,
+                            json.dumps(fn_args, ensure_ascii=False, default=str)[:500])
+
+                # RBAC enforcement
+                rbac_error = await self._check_tool_permission(fn_name, user_id)
                 if rbac_error:
-                    logger.warning("RBAC blocked tool %s for user %s", block.name, user_id)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
+                    logger.warning("RBAC blocked tool %s for user %s", fn_name, user_id)
+                    openai_msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
                         "content": rbac_error,
-                        "is_error": True,
                     })
                     continue
 
                 try:
                     result = await asyncio.wait_for(
-                        self.mcp.call_tool(block.name, block.input),
+                        self.mcp.call_tool(fn_name, fn_args),
                         timeout=30.0,
                     )
                     if not isinstance(result, str):
                         result = json.dumps(result, ensure_ascii=False, default=str)
 
                     # Intercept PDF results
-                    if block.name in PDF_TOOLS:
+                    if fn_name in PDF_TOOLS:
                         pdf_data = _extract_pdf(result)
                         if pdf_data:
                             self._pending_pdfs.setdefault(user_id, []).append(pdf_data)
@@ -554,38 +542,33 @@ class MasiAgent:
                             logger.info("PDF intercepted: %s (%d bytes)",
                                         pdf_data.get("filename"), pdf_data.get("size_bytes", 0))
 
-                    # Track active entity context for drill-down
-                    entity = self._extract_entity_from_tool_result(block.name, result)
+                    # Track active entity context
+                    entity = self._extract_entity_from_tool_result(fn_name, result)
                     if entity:
                         import time as _time
                         entity["_ts"] = _time.time()
                         self._active_contexts[user_id] = entity
                         logger.info("Active context set: user=%d %s", user_id, entity)
 
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
+                    openai_msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
                         "content": result,
                     })
-                    logger.info("Tool %s returned %d chars", block.name, len(result))
+                    logger.info("Tool %s returned %d chars", fn_name, len(result))
                 except asyncio.TimeoutError:
-                    logger.error("Tool %s timed out (30s)", block.name)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": f"Error: Tool {block.name} timed out after 30 seconds",
-                        "is_error": True,
+                    logger.error("Tool %s timed out (30s)", fn_name)
+                    openai_msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": f"Error: Tool {fn_name} timed out after 30 seconds",
                     })
-                    continue
                 except Exception as e:
-                    logger.error("Tool %s failed: %s", block.name, e)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
+                    logger.error("Tool %s failed: %s", fn_name, e)
+                    openai_msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
                         "content": f"Error: {e}",
-                        "is_error": True,
                     })
-
-            msgs.append({"role": "user", "content": tool_results})
 
         return "⚠️ Đã vượt giới hạn xử lý. Vui lòng thử lại với yêu cầu đơn giản hơn."

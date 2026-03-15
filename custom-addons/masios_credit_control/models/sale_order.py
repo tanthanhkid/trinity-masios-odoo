@@ -15,6 +15,9 @@ class SaleOrder(models.Model):
     )
 
     def action_confirm(self):
+        if self.env.context.get('bypass_credit_check'):
+            return super().action_confirm()
+
         for order in self:
             partner = order.partner_id
             if partner.customer_classification == 'new':

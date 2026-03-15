@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="res_config_settings_view_form_credit_approval" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.credit.approval</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="sale.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//block[@name='invoicing_setting_container']" position="after">
+                <block title="Phê duyệt công nợ" name="credit_approval_setting_container">
+                    <setting string="Ngưỡng phê duyệt" help="Khi tổng công nợ khách hàng vượt ngưỡng này, đơn hàng cần CEO duyệt trước khi xác nhận.">
+                        <div class="content-group">
+                            <div class="row mt16">
+                                <label for="credit_approval_threshold" class="col-lg-3"/>
+                                <field name="credit_approval_threshold" class="col-lg-3"/>
+                            </div>
+                        </div>
+                    </setting>
+                    <setting string="Telegram thông báo" help="Cấu hình Telegram Bot để gửi thông báo phê duyệt cho CEO.">
+                        <div class="content-group">
+                            <div class="row mt16">
+                                <label for="credit_approval_telegram_bot_token" class="col-lg-3"/>
+                                <field name="credit_approval_telegram_bot_token" class="col-lg-6" password="True"/>
+                            </div>
+                            <div class="row mt8">
+                                <label for="credit_approval_ceo_chat_id" class="col-lg-3"/>
+                                <field name="credit_approval_ceo_chat_id" class="col-lg-3"/>
+                            </div>
+                        </div>
+                    </setting>
+                </block>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
