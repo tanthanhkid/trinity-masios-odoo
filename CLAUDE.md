@@ -28,77 +28,47 @@ Self-hosted Odoo deployment on Ubuntu server with custom module development capa
 - Real-time bridge to Odoo via XML-RPC (`.mcp.json` → `mcp/odoo-server/server.py`)
 - Credentials in `.env.local` (gitignored), template in `.env.example`
 - Server-side creds: `/etc/odoo-mcp/credentials` (chmod 600)
-- 26 tools: introspect models/fields/access/views, CRUD, CRM helpers, sales/invoicing, credit control, dashboard, execute (allowlisted)
+- 55 tools: introspect models/fields/access/views, CRUD, CRM helpers, sales/invoicing, credit control, credit approval, dashboard, execute (allowlisted)
 - Use `odoo_model_fields` to get field types, constraints, relations for any model
 - Use `odoo_list_models` with filter to discover models (e.g. filter="crm")
 - Requires `uv` (Python package runner) — no global install needed
-- Inside Docker containers, `mcporter` CLI must be installed for OpenClaw agents to call MCP tools
 
 ### Authentication
 - **stdio mode** (Claude Code): No token needed — runs locally
-- **HTTP mode** (OpenClaw/remote): Bearer token required
+- **HTTP mode** (remote): Bearer token required
   - Token stored in `MCP_API_TOKEN` env var (in `/etc/odoo-mcp/credentials` on server)
   - Generate: `uv run --with mcp python3 mcp/odoo-server/server.py --generate-token`
-  - Without token: server warns but still starts (NO auth — dev only)
   - With token: all HTTP requests must include `Authorization: Bearer <token>` header
   - Auth errors: 401 (missing header), 403 (wrong token)
 
-### OpenClaw Integration
-- Registered in mcporter: `~/.mcporter/mcporter.json` (home scope)
-- OpenClaw agents use `mcporter` skill to call Odoo tools
-- Call pattern: `mcporter call odoo.<tool_name> key=value`
-- Examples:
-  - `mcporter call odoo.odoo_server_info`
-  - `mcporter call odoo.odoo_list_models filter=crm`
-  - `mcporter call odoo.odoo_model_fields model=crm.lead`
-  - `mcporter call odoo.odoo_crm_stages`
-  - `mcporter call odoo.odoo_search_read model=crm.lead domain='[]' limit=10`
-- Env vars (ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD) stored in mcporter config
-- HTTP mode: `server.py --http --port 8200` (for remote OpenClaw instances)
-- Systemd: `deploy/mcp/odoo-mcp.service` → runs on server as HTTP
-- New OpenClaw setup: see `openclaw_setup.md`
-- Skill for agents: `deploy/mcp/openclaw-skill/SKILL.md`
-- mcporter with auth: `mcporter config add odoo http://server:8200/sse --header "Authorization=Bearer <token>" --scope home`
-
-#### Exec Approvals
-- `exec-approvals.json` only works for LOCAL/CLI mode — has no effect in Telegram gateway
-- For Telegram gateway: set `agents.defaults.elevatedDefault: "full"` + `tools.exec.security: "full"`
-- These keys are set via `openclaw config set` in `entrypoint.sh` (template validation strips them)
-- Test Telegram flow with: `openclaw agent --channel telegram --session-id X --message "..."`
-
-### Docker Deployment (`deploy/openclaw/`)
-- Dockerized OpenClaw bots with template-based configuration
-- Config templates: `config/openclaw.template.json`, `config/mcporter.template.json`
-- `entrypoint.sh` injects env vars (TELEGRAM_BOT_TOKEN, ODOO_URL, etc.) at container startup via `sed` replacement
-- Environment variables passed through `docker-compose.yml` and `.env` file
-- GLM-5 is the best-performing model for tool-calling tasks with OpenClaw
-
 ### Modes
 - **stdio** (Claude Code): `.mcp.json` → `uv run` → local process (no token needed)
-- **HTTP** (OpenClaw remote): `http://server:8200/sse` → mcporter connects (bearer token required)
+- **HTTP** (remote): `http://server:8200/sse` → bearer token required
 
 ## Masi Telegram Bot v2 (`deploy/masi-bot/`)
-Lightweight Telegram bot replacing OpenClaw — direct MCP integration, template-based formatting.
+Lightweight Telegram bot — direct MCP integration, template-based formatting.
 
-- **Architecture**: python-telegram-bot → Anthropic SDK (Qwen 3.5 Plus via Alibaba) → MCP SSE client → Odoo
+- **Architecture**: python-telegram-bot → **OpenAI SDK (Gemini 3.1 Flash Lite via OpenRouter)** → MCP SSE client → Odoo
 - **Deploy**: Systemd service on Odoo server (`/opt/masi-bot/`, `masi-bot.service`)
-- **Model**: Qwen 3.5 Plus via Alibaba Anthropic-compatible API
+- **Model**: `google/gemini-3.1-flash-lite-preview` via OpenRouter ($0.25/M input, $1.50/M output)
 - **Telegram Bot**: `@hdxthanhtt4bot` (Bot 1)
 - **Whitelist**: `2048339435` (CEO), `1481072032` (Hunter Lead), `5001000001` (Farmer Lead)
-- **Performance**: Slash commands < 1s (template formatter), free-form chat ~10s (LLM)
+- **Performance**: Slash commands < 1s (template formatter), free-form chat ~3-10s (LLM)
 - **Files**:
-  - `bot.py` — Telegram handler, RBAC, conversation memory, HTML formatting
-  - `agent.py` — LLM tool-calling loop + fast path (direct MCP → template)
+  - `bot.py` — Telegram handler, RBAC, conversation memory, HTML formatting, inline button callbacks
+  - `agent.py` — OpenAI SDK tool-calling loop + fast path (direct MCP → template)
   - `mcp_client.py` — MCP SSE client, tool discovery, persistent connection
-  - `formatter.py` — Python template formatters for 27 slash commands (no LLM)
-  - `config.py` — env vars, system prompt, whitelist, TEST_USERS dict
-- **34 slash commands** registered in Telegram menu (includes `/what_changed` stub)
-- **51 MCP tools** auto-discovered at startup
-- **Context injection**: `_active_contexts` dict per user persists entity (partner/order/invoice) across turns — fixes /findcustomer drill-down context drift
+  - `formatter.py` — Python template formatters for 28 slash commands (no LLM)
+  - `config.py` — env vars, system prompt, whitelist, TEST_USERS dict, LLM backend config
+- **37 slash commands** registered in Telegram menu
+- **55 MCP tools** auto-discovered at startup
+- **Context injection**: `_active_contexts` dict per user persists entity (partner/order/invoice) across turns
+- **Credit approval callbacks**: `CallbackQueryHandler` handles inline Approve/Reject buttons from CEO
 
 ### How it works
-1. **Slash commands** (`/kpi`, `/morning_brief`, etc.): Permission check → MCP tool call → Python template format → Telegram HTML. No LLM needed. Sub-second response.
-2. **Free-form chat**: Permission check → Qwen 3.5 Plus with 51 tools → tool-calling loop → Telegram HTML. ~10s response.
+1. **Slash commands** (`/kpi`, `/morning_brief`, `/pending_approvals`, etc.): Permission check → MCP tool call → Python template format → Telegram HTML. No LLM needed. Sub-second response.
+2. **Free-form chat** (`/approve`, `/reject`, create order, etc.): Permission check → Gemini Flash Lite with 55 tools → tool-calling loop → Telegram HTML. ~3-10s response.
+3. **Credit approval buttons**: CEO receives inline buttons → `CallbackQueryHandler` → MCP approve/reject → update Telegram message.
 
 ### Deploy commands
 ```bash
@@ -115,14 +85,15 @@ journalctl -u masi-bot -f    # Tail logs
 - **OS**: macOS 26.3, Apple Silicon (ARM64), Mac Studio
 - **Docker**: OrbStack v2.0.5, Docker 29.2.0
 - **Deploy paths**:
-  - Bot 1: **REPLACED** by Masi Bot v2 on Odoo server (was `~/openclaw-odoo/` port 18789)
-  - Bot 2: `~/openclaw-bot2-native/` (port 18790) — Telegram `@MASIBIO_bot` (native macOS, **disconnected from Odoo** — clean OpenClaw instance, no Odoo skills/MCP)
+  - Bot 1: **REPLACED** by Masi Bot v2 on Odoo server
+  - Bot 2: `~/openclaw-bot2-native/` (port 18790) — Telegram `@MASIBIO_bot` (native macOS, **disconnected from Odoo**)
 - **Telegram whitelist**: `2048339435` (CEO), `1481072032`
 
-## MCP Tools (51 total)
+## MCP Tools (55 total)
 ### Core (13): server_info, list_models, model_fields, model_access, model_views, crm_stages, crm_lead_summary, search_read, count, create, write, delete, execute
 ### Sales & Invoice (7): sale_order_summary, create_sale_order, confirm_sale_order, invoice_summary, create_invoice_from_so, sale_order_pdf, invoice_pdf
 ### Customer & Credit (4): create_customer, customer_credit_status, customer_set_classification, customers_exceeding_credit
+### Credit Approval (4): pending_approvals, approve_credit, reject_credit, approval_history
 ### Dashboard (2): dashboard_kpis, pipeline_by_stage
 ### Command Center (14): morning_brief, ceo_alert, revenue_today, brief_hunter, brief_farmer, brief_ar, brief_cash, hunter_today, hunter_sla_details, farmer_today, farmer_ar, congno, task_overdue, flash_report
 ### Actions (7): mark_contacted, mark_collection, set_dispute, change_owner, escalate, complete_task, audit_log
@@ -131,6 +102,22 @@ journalctl -u masi-bot -f    # Tail logs
 ## Custom Modules Deployed
 - `masios_credit_control` — Customer classification (new/old), credit limits, debt tracking
 - `masios_dashboard` — CEO dashboard at `/dashboard` with KPIs, pipeline, orders, invoices
+- `masios_credit_approval` — CEO approval workflow for orders exceeding debt threshold
+
+### Credit Approval Workflow
+When a sale order is confirmed and customer's total outstanding debt exceeds a configurable threshold (default 20M VND):
+1. **Hold**: SO stays in draft, `credit.approval.request` record created
+2. **Notify**: Telegram notification sent to CEO with inline ✅ Duyệt / ❌ Từ chối buttons
+3. **Approve**: CEO taps Duyệt → SO auto-confirmed, Telegram message updated
+4. **Reject**: CEO taps Từ chối → bot asks for reason → SO stays draft, reason logged
+5. **History**: Full audit trail in Odoo web (Sales → Phê duyệt công nợ)
+6. **Config**: Settings → Sales → Phê duyệt công nợ (threshold, Telegram bot token, CEO chat ID)
+
+Technical details:
+- Uses `self.pool.cursor()` autonomous cursor to persist approval request despite UserError rollback
+- `bypass_credit_approval` + `bypass_credit_check` context flags for approved orders
+- Odoo model calls Telegram Bot API directly via `urllib.request` (no bot dependency)
+- System params: `masios_credit_approval.threshold`, `.telegram_bot_token`, `.telegram_ceo_chat_id`
 
 ## Git Commit Rules (MANDATORY)
 Every commit MUST have a detailed, well-documented message. Never use vague messages like "fix bug", "update code", or "misc changes".
@@ -163,7 +150,7 @@ Changes:
 1. **Subject line**: max 72 chars, imperative mood ("Add X" not "Added X")
 2. **Body**: explain WHY, not just WHAT. Include context, reasoning, trade-offs
 3. **Changes list**: enumerate every significant file/function modified
-4. **Scope**: component affected (e.g. `mcp`, `credit-control`, `dashboard`, `openclaw`, `deploy`)
+4. **Scope**: component affected (e.g. `mcp`, `credit-control`, `dashboard`, `credit-approval`, `masi-bot`)
 5. **No empty bodies**: every commit must have a description beyond the subject line
 6. **Reference issues**: mention related bugs, features, or decisions when applicable
 
@@ -178,32 +165,29 @@ and download reports as base64-encoded PDFs.
 Changes:
 - mcp/odoo-server/server.py: Add odoo_sale_order_pdf() and odoo_invoice_pdf()
 - mcp/odoo-server/server.py: Add _get_session_and_pdf() helper for HTTP auth
-- deploy/openclaw/config/workspace/send_pdf.py: Telegram Bot API PDF sender
 
 Trade-off: base64 encoding doubles payload size but avoids binary in JSON.
-File-based approach (/tmp) used to handle large payloads.
 ```
 
-```
-fix(openclaw): Resolve Telegram gateway ignoring exec-approvals.json
+## Test Suite
 
-exec-approvals.json only works in LOCAL/CLI mode. Telegram gateway uses
-a separate approval path that requires elevated permissions config.
-
-Changes:
-- deploy/openclaw/entrypoint.sh: Add openclaw config set for elevatedDefault and exec.security
-- CLAUDE.md: Document two-tier approval architecture (CLI vs gateway)
-- AGENTS.md: Add exec approvals section with testing instructions
-
-Root cause: OpenClaw template validation strips non-standard keys from JSON,
-so these must be set via CLI after config generation.
+### Unit Tests (137 tests, <1.3s)
+```bash
+cd deploy/masi-bot && python -m pytest tests/ -v
 ```
 
-## E2E Test Suite
+| File | Tests | Coverage |
+|------|:-----:|----------|
+| `tests/test_agent_helpers.py` | 34 | `_quick_reply`, `_trim_history`, `_extract_pdf`, `_pdf_summary`, `_mcp_tools_to_openai` |
+| `tests/test_formatter_helpers.py` | 30 | `_safe_json`, `_money`, `_pct`, `_val`, `_dq` |
+| `tests/test_formatter_commands.py` | 21 | `format_command` router + 8 key `format_*` functions |
+| `tests/test_md_to_html.py` | 20 | Markdown→Telegram HTML (bold, code, tables, XSS) |
+| `tests/test_mcp_parsers.py` | 20 | `_parse_json`, `_parse_domain`, `_parse_ids`, `_parse_values` |
+| `tests/test_context_injection.py` | 6 | `_inject_context`, `_extract_entity_from_tool_result` |
+| `tests/test_openrouter_hallucination.py` | 3 | Gemini tool-calling accuracy (standalone, calls OpenRouter API) |
 
-### Odoo Web UI Tests (Playwright headless browser)
+### E2E Tests — Odoo Web UI (Playwright)
 - `tests/e2e/test_e2e_full.py` — 27 tests across 6 suites
-- `tests/__init__.py`, `tests/e2e/__init__.py` — package markers
 
 | Suite | Tests | Coverage |
 |-------|-------|----------|
@@ -215,19 +199,16 @@ so these must be set via CLI after config generation.
 | 6 — Command Center | 3 | Command Center menu visibility, masios.telegram_user accessible |
 
 ```bash
-# Requires: pip install playwright && python -m playwright install chromium
 python3 tests/e2e/test_e2e_full.py
 ```
-**Note:** Run after 45s+ gap — Odoo workers (2 CPU, 3.8GB) need cooldown. Screenshots → `test_screenshots/` on failure.
 
-### Telegram Bot API Tests (test_server port 8300)
-Three additional suites calling the masi-bot REST API directly (no browser, stdlib urllib only):
+### E2E Tests — Telegram Bot API (test_server port 8300)
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `tests/e2e/test_bot_commands.py` | 27 | All fast-path commands, CEO role, keyword + timing check |
 | `tests/e2e/test_bot_rbac.py` | 27 | Full RBAC matrix per spec v1.1 (allowed + blocked per role) |
-| `tests/e2e/test_bot_multiturn.py` | 5 | /quote→number, /invoice→number, /findcustomer drill-down, ok-guard, morning_brief drill |
+| `tests/e2e/test_bot_multiturn.py` | 5 | /quote→number, /invoice→number, /findcustomer drill-down, ok-guard |
 
 ```bash
 python3 tests/e2e/test_bot_commands.py
@@ -235,12 +216,6 @@ python3 tests/e2e/test_bot_rbac.py
 python3 tests/e2e/test_bot_multiturn.py
 ```
 **Prerequisite:** masi-bot service running on server (port 8300 accessible).
-
-### Unit Tests
-- `deploy/masi-bot/tests/test_context_injection.py` — 6 unit tests for `_inject_context` + `_extract_entity_from_tool_result`
-```bash
-cd deploy/masi-bot && python -m pytest tests/test_context_injection.py -v
-```
 
 ### RBAC Permission Matrix (per Spec v1.1)
 | Command | CEO | Hunter | Farmer | Finance | Ops/PM | Admin |
@@ -258,6 +233,7 @@ cd deploy/masi-bot && python -m pytest tests/test_context_injection.py -v
 | congno_quahan | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | task_quahan | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | midday / eod | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| pending_approvals | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 Stored in Odoo: `masios.telegram_role` records (id 1-6).
 
