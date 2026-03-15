@@ -66,8 +66,8 @@ class OdooMCPClient:
         if self._exit_stack:
             try:
                 await self._exit_stack.aclose()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Error closing MCP connection: %s", e)
             self._exit_stack = None
 
     async def disconnect(self):
@@ -114,7 +114,14 @@ class OdooMCPClient:
         except Exception as exc:
             logger.warning("Tool call failed (%s), reconnecting: %s", name, exc)
             self._connected = False
-            await self.connect()
+            try:
+                await self.connect()
+            except Exception as conn_err:
+                raise ConnectionError(
+                    f"MCP server unreachable after reconnect: {conn_err}"
+                ) from conn_err
+            if not self._session:
+                raise ConnectionError("MCP session not established after reconnect")
             result = await self._session.call_tool(name, arguments)
 
         parts = []

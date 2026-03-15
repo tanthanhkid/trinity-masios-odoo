@@ -54,11 +54,16 @@ def _cleanup_stale_conversations():
              if now - data["last_active"] > CONVERSATION_TTL]
     for uid in stale:
         del conversations[uid]
+        # Also clean up agent state for this user
+        if agent:
+            agent.cleanup_user(uid)
     # If still over limit, remove oldest
     if len(conversations) > MAX_CONVERSATIONS:
         sorted_uids = sorted(conversations, key=lambda u: conversations[u]["last_active"])
         for uid in sorted_uids[:len(conversations) - MAX_CONVERSATIONS]:
             del conversations[uid]
+            if agent:
+                agent.cleanup_user(uid)
 
 
 def get_history(user_id: int) -> list:
@@ -85,6 +90,8 @@ def add_to_history(user_id: int, role: str, content: str):
 # Access control
 # ---------------------------------------------------------------------------
 async def check_whitelist(update: Update) -> bool:
+    if not update.message:
+        return False
     user_id = update.effective_user.id
     if user_id not in TELEGRAM_WHITELIST:
         await update.message.reply_text(
@@ -108,15 +115,16 @@ async def send_long_message(update: Update, text: str):
     import re
 
     async def send_chunk(chunk: str):
+        import re as _re
+        from telegram.error import BadRequest
         # Try HTML first (convert markdown if needed)
         html = md_to_html(chunk)
         try:
             await update.message.reply_text(html, parse_mode="HTML")
             return
-        except Exception as e:
+        except BadRequest as e:
             logger.debug("HTML parse failed, trying plain: %s", e)
         # Fallback: plain text (strip HTML tags)
-        import re as _re
         plain = _re.sub(r'<[^>]+>', '', chunk)
         await update.message.reply_text(plain)
 
@@ -222,8 +230,13 @@ def md_to_html(text: str) -> str:
     text = re.sub(r'__(.+?)__', r'<u>\1</u>', text)
     # Strikethrough: ~~text~~
     text = re.sub(r'~~(.+?)~~', r'<s>\1</s>', text)
-    # Links: [text](url)
-    text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', text)
+    # Links: [text](url) — only allow http(s) URLs
+    def _safe_link(m):
+        link_text, url = m.group(1), m.group(2)
+        if url.startswith(("http://", "https://")):
+            return f'<a href="{url}">{link_text}</a>'
+        return link_text
+    text = re.sub(r'\[(.+?)\]\((.+?)\)', _safe_link, text)
     # Blockquote: > text
     text = re.sub(r'^&gt;\s?(.+)$', r'<blockquote>\1</blockquote>', text, flags=re.MULTILINE)
     # Merge adjacent blockquotes
@@ -283,8 +296,10 @@ async def keep_typing(chat, stop_event: asyncio.Event):
     while not stop_event.is_set():
         try:
             await chat.send_action("typing")
-        except Exception:
-            pass
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.debug("Typing indicator failed: %s", e)
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=4.0)
         except asyncio.TimeoutError:
@@ -351,7 +366,22 @@ async def post_init(application: Application):
     """Initialize MCP client after bot starts but before polling."""
     global mcp_client, agent
     mcp_client = OdooMCPClient()
-    await mcp_client.connect()
+
+    # Retry MCP connection with exponential backoff
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            await mcp_client.connect()
+            break
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error("MCP connection failed after %d attempts: %s", max_retries, e)
+                raise
+            wait = min(2 ** attempt, 10)
+            logger.warning("MCP connect attempt %d/%d failed: %s — retrying in %ds",
+                           attempt + 1, max_retries, e, wait)
+            await asyncio.sleep(wait)
+
     agent = MasiAgent(mcp_client)
     logger.info("Bot initialized with %d MCP tools", len(mcp_client.tools))
 

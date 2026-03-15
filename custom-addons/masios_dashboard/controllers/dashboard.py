@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta
 
-from odoo import http
+from odoo import fields, http
 from odoo.http import request
 
 
@@ -27,9 +27,9 @@ class DashboardController(http.Controller):
         return request.make_json_response(data)
 
     def _get_kpis(self):
-        today = datetime.now()
+        today = fields.Date.today()
         first_day = today.replace(day=1)
-        first_day_str = first_day.strftime('%Y-%m-%d')
+        first_day_str = first_day.isoformat()
 
         # Pipeline value (active opportunities) — aggregate in DB
         pipeline_data = request.env['crm.lead'].read_group(
@@ -103,7 +103,7 @@ class DashboardController(http.Controller):
                     'amount_total', 'amount_residual'],
             limit=15, order='invoice_date desc'
         )
-        today = datetime.now().date()
+        today = fields.Date.today()
         result = []
         for inv in invoices:
             days_overdue = 0

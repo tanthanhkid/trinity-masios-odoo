@@ -17,6 +17,7 @@ Endpoints:
 import asyncio
 import json
 import logging
+import os
 import time
 from aiohttp import web
 
@@ -366,19 +367,39 @@ async def on_startup(app: web.Application):
     logger.info("Test server initialized with %d MCP tools", len(mcp_client.tools))
 
 
+TEST_API_TOKEN = os.environ.get("TEST_API_TOKEN", "")
+
+
 def create_app() -> web.Application:
     @web.middleware
-    async def cors_middleware(request, handler):
-        if request.method == "OPTIONS":
-            resp = web.Response()
+    async def auth_middleware(request, handler):
+        # Health check is always open
+        if request.path == "/api/health":
+            resp = await handler(request)
+        elif TEST_API_TOKEN:
+            auth = request.headers.get("Authorization", "")
+            if auth != f"Bearer {TEST_API_TOKEN}":
+                return web.json_response({"error": "Unauthorized"}, status=401)
+            resp = await handler(request)
         else:
             resp = await handler(request)
+        # CORS
         resp.headers["Access-Control-Allow-Origin"] = "*"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         return resp
 
-    app = web.Application(middlewares=[cors_middleware])
+    @web.middleware
+    async def options_middleware(request, handler):
+        if request.method == "OPTIONS":
+            resp = web.Response()
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            return resp
+        return await handler(request)
+
+    app = web.Application(middlewares=[options_middleware, auth_middleware])
     app.on_startup.append(on_startup)
     app.router.add_get("/", handle_index)
     app.router.add_post("/api/chat", handle_chat)
@@ -391,5 +412,9 @@ def create_app() -> web.Application:
 
 
 if __name__ == "__main__":
-    logger.info("Starting Test API at http://0.0.0.0:8300")
-    web.run_app(create_app(), host="0.0.0.0", port=8300)
+    bind_host = os.environ.get("TEST_API_HOST", "127.0.0.1")
+    bind_port = int(os.environ.get("TEST_API_PORT", "8300"))
+    if not TEST_API_TOKEN:
+        logger.warning("TEST_API_TOKEN not set — test API running WITHOUT authentication")
+    logger.info("Starting Test API at http://%s:%d", bind_host, bind_port)
+    web.run_app(create_app(), host=bind_host, port=bind_port)

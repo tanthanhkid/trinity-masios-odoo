@@ -9,6 +9,9 @@ from formatter import format_command
 
 logger = logging.getLogger(__name__)
 
+# Reverse mapping: MCP tool name → slash command(s) for RBAC enforcement
+_TOOL_TO_COMMANDS: dict[str, list[str]] = {}
+
 # Slash command → MCP tool direct mapping (skip LLM round 1)
 COMMAND_TOOL_MAP = {
     "/morning_brief": ("odoo_morning_brief", {}),
@@ -39,6 +42,10 @@ COMMAND_TOOL_MAP = {
     "/pipeline": ("odoo_pipeline_by_stage", {}),
     "/credit": ("odoo_customers_exceeding_credit", {}),
 }
+
+# Build reverse mapping at module load
+for _cmd, (_tool, _) in COMMAND_TOOL_MAP.items():
+    _TOOL_TO_COMMANDS.setdefault(_tool, []).append(_cmd.lstrip("/"))
 
 # Tools that return PDF base64 — intercept and handle specially
 PDF_TOOLS = {"odoo_sale_order_pdf", "odoo_invoice_pdf"}
@@ -108,8 +115,27 @@ class MasiAgent:
         )
         # Per-user PDF queues to prevent cross-user PDF leaks
         self._pending_pdfs: dict[int, list[dict]] = {}
-        # Tracks last found entity per user: {user_id: {"type": "partner"|"order"|"invoice", "id": str, "name": str}}
+        # Tracks last found entity per user: {user_id: {"type": ..., "id": ..., "name": ..., "_ts": float}}
         self._active_contexts: dict[int, dict] = {}
+        self._CONTEXT_TTL = 3600  # 1 hour TTL for stale contexts
+
+    def cleanup_user(self, user_id: int):
+        """Remove stale data for a user (called from bot.py cleanup)."""
+        self._active_contexts.pop(user_id, None)
+        self._pending_pdfs.pop(user_id, None)
+
+    def _evict_stale_contexts(self):
+        """Remove contexts older than TTL."""
+        import time
+        now = time.time()
+        stale = [uid for uid, ctx in self._active_contexts.items()
+                 if now - ctx.get("_ts", 0) > self._CONTEXT_TTL]
+        for uid in stale:
+            del self._active_contexts[uid]
+        # Also evict orphaned PDF queues
+        stale_pdfs = [uid for uid, pdfs in self._pending_pdfs.items() if not pdfs]
+        for uid in stale_pdfs:
+            del self._pending_pdfs[uid]
 
     def pop_pending_pdfs(self, user_id: int = 0) -> list[dict]:
         """Retrieve and clear pending PDF attachments for a specific user."""
@@ -122,6 +148,7 @@ class MasiAgent:
         msgs = [m.copy() for m in messages]
 
         self._pending_pdfs[telegram_user_id] = []
+        self._evict_stale_contexts()
 
         # Fast path: known slash commands
         last_msg = msgs[-1]["content"] if msgs else ""
@@ -305,7 +332,8 @@ class MasiAgent:
         try:
             data = _json.loads(tool_result) if isinstance(tool_result, str) else tool_result
             data = data.get("result", data) if isinstance(data, dict) else data
-        except Exception:
+        except Exception as e:
+            logger.debug("Entity extraction parse failed for %s: %s", tool_name, e)
             data = {}
 
         # search_read → partner (only if exactly 1 result)
@@ -371,8 +399,8 @@ class MasiAgent:
                 "command": cmd.lstrip("/"),
             })
             perm = json.loads(perm_result) if isinstance(perm_result, str) else perm_result
-            if isinstance(perm, dict) and perm.get("allowed") is False:
-                reason = perm.get("reason", "Không có quyền")
+            if not (isinstance(perm, dict) and perm.get("allowed") is True):
+                reason = perm.get("reason", "Không có quyền") if isinstance(perm, dict) else "Lỗi kiểm tra quyền"
                 return f"🚫 {reason}"
         except Exception as e:
             logger.error("Permission check failed for %s (fail-closed): %s", cmd, e)
@@ -421,6 +449,27 @@ class MasiAgent:
                 return "⏱️ Request timeout. Vui lòng thử lại."
             except anthropic.APIError as e:
                 return f"❌ Lỗi LLM: {e.message}"
+
+    async def _check_tool_permission(self, tool_name: str, user_id: int) -> str | None:
+        """Check if user has permission to call a tool. Returns error message or None."""
+        # Map tool to command(s) for permission check
+        commands = _TOOL_TO_COMMANDS.get(tool_name)
+        if not commands:
+            return None  # Not a mapped command tool, allow (generic CRUD)
+        cmd = commands[0]  # Check first mapped command
+        try:
+            perm_result = await self.mcp.call_tool("odoo_telegram_check_permission", {
+                "telegram_id": str(user_id),
+                "command": cmd,
+            })
+            perm = json.loads(perm_result) if isinstance(perm_result, str) else perm_result
+            if not (isinstance(perm, dict) and perm.get("allowed") is True):
+                reason = perm.get("reason", "Không có quyền") if isinstance(perm, dict) else "Lỗi quyền"
+                return f"🚫 Bạn không có quyền thực hiện lệnh /{cmd}: {reason}"
+        except Exception as e:
+            logger.error("LLM path permission check failed for %s (fail-closed): %s", tool_name, e)
+            return f"⚠️ Không thể kiểm tra quyền cho {tool_name}. Vui lòng thử lại."
+        return None
 
     async def _tool_loop(self, msgs: list, system: str, tools: list, user_id: int) -> str:
         """Full tool-calling loop for free-form messages."""
@@ -473,8 +522,24 @@ class MasiAgent:
                     block.name,
                     json.dumps(block.input, ensure_ascii=False, default=str)[:500],
                 )
+
+                # RBAC enforcement: check permission before calling mapped tools
+                rbac_error = await self._check_tool_permission(block.name, user_id)
+                if rbac_error:
+                    logger.warning("RBAC blocked tool %s for user %s", block.name, user_id)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": rbac_error,
+                        "is_error": True,
+                    })
+                    continue
+
                 try:
-                    result = await self.mcp.call_tool(block.name, block.input)
+                    result = await asyncio.wait_for(
+                        self.mcp.call_tool(block.name, block.input),
+                        timeout=30.0,
+                    )
                     if not isinstance(result, str):
                         result = json.dumps(result, ensure_ascii=False, default=str)
 
@@ -490,6 +555,8 @@ class MasiAgent:
                     # Track active entity context for drill-down
                     entity = self._extract_entity_from_tool_result(block.name, result)
                     if entity:
+                        import time as _time
+                        entity["_ts"] = _time.time()
                         self._active_contexts[user_id] = entity
                         logger.info("Active context set: user=%d %s", user_id, entity)
 
@@ -499,6 +566,15 @@ class MasiAgent:
                         "content": result,
                     })
                     logger.info("Tool %s returned %d chars", block.name, len(result))
+                except asyncio.TimeoutError:
+                    logger.error("Tool %s timed out (30s)", block.name)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": f"Error: Tool {block.name} timed out after 30 seconds",
+                        "is_error": True,
+                    })
+                    continue
                 except Exception as e:
                     logger.error("Tool %s failed: %s", block.name, e)
                     tool_results.append({

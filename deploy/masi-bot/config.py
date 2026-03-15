@@ -1,7 +1,18 @@
 import os
+import sys
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Startup validation: fail fast with clear message if env vars missing
+# ---------------------------------------------------------------------------
+_REQUIRED_VARS = ["TELEGRAM_BOT_TOKEN", "ALIBABA_API_KEY", "ODOO_MCP_URL"]
+_missing = [v for v in _REQUIRED_VARS if not os.environ.get(v)]
+if _missing:
+    print(f"ERROR: Missing required environment variables: {', '.join(_missing)}", file=sys.stderr)
+    print("Check your .env file or environment configuration.", file=sys.stderr)
+    sys.exit(1)
 
 # Telegram
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -24,8 +35,8 @@ LLM_BASE_URL = "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic"
 LLM_API_KEY = os.environ["ALIBABA_API_KEY"]
 LLM_MODEL = "qwen3-coder-next"
 
-# Odoo MCP Server
-MCP_SERVER_URL = os.environ.get("ODOO_MCP_URL", "http://103.72.97.51:8200/sse")
+# Odoo MCP Server — no default fallback to production
+MCP_SERVER_URL = os.environ["ODOO_MCP_URL"]
 MCP_API_TOKEN = os.environ.get("ODOO_MCP_TOKEN", "")
 
 # System prompt

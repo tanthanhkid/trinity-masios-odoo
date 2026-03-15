@@ -26,9 +26,36 @@ from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+import re as _re_module
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger("odoo-mcp")
+
+# ---------------------------------------------------------------------------
+# Security: unified protected model set for create/write/delete
+# ---------------------------------------------------------------------------
+_PROTECTED_MODELS: frozenset[str] = frozenset({
+    "ir.model", "ir.module.module", "ir.model.access", "ir.rule",
+    "ir.config_parameter", "res.users", "res.company",
+    "ir.ui.view", "ir.actions.server", "ir.cron", "mail.message",
+})
+
+# Models allowed for odoo_execute (business models only)
+_ALLOWED_EXECUTE_MODELS: frozenset[str] = frozenset({
+    "crm.lead", "sale.order", "account.move", "res.partner",
+    "project.task", "product.product", "product.template",
+    "sale.order.line", "account.move.line",
+})
+
+# Sensitive models blocked from odoo_search_read/odoo_count
+_BLOCKED_READ_MODELS: frozenset[str] = frozenset({
+    "ir.config_parameter", "ir.attachment", "res.users",
+})
+
+# Models allowed for odoo_escalate/odoo_change_owner
+_ALLOWED_ACTION_MODELS: frozenset[str] = frozenset({
+    "crm.lead", "sale.order", "account.move", "res.partner", "project.task",
+})
 
 # MCP SDK
 try:
@@ -99,6 +126,9 @@ def _odoo_error(func):
         except ValueError as e:
             logger.error(f"tool={func.__name__} value error: {e}")
             return json.dumps({"error": str(e)})
+        except Exception as e:
+            logger.error(f"tool={func.__name__} unexpected error: {e}", exc_info=True)
+            return json.dumps({"error": f"Unexpected error in {func.__name__}: {type(e).__name__}: {e}"})
 
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
@@ -286,6 +316,8 @@ class OdooClient:
 
     def download_report(self, report_name: str, record_ids: list[int]) -> bytes:
         """Download a PDF report from Odoo's report engine via HTTP."""
+        if not _re_module.match(r'^[a-z0-9_.]+$', report_name):
+            raise ValueError(f"Invalid report name: {report_name}")
         for attempt in range(2):
             try:
                 opener = self._get_http_opener()
@@ -562,6 +594,8 @@ def odoo_search_read(
         offset: Skip first N records
         order: Sort order (e.g. 'create_date desc')
     """
+    if model in _BLOCKED_READ_MODELS:
+        return json.dumps({"error": f"Cannot read from restricted model '{model}'"})
     client = get_client()
     parsed_domain = _parse_domain(domain) if domain else []
     parsed_fields = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
@@ -586,6 +620,8 @@ def odoo_count(model: str, domain: Any = "[]") -> str:
         model: Model name
         domain: Search domain as JSON string
     """
+    if model in _BLOCKED_READ_MODELS:
+        return json.dumps({"error": f"Cannot count restricted model '{model}'"})
     client = get_client()
     parsed_domain = _parse_domain(domain) if domain else []
     count = client.search_count(model, parsed_domain)
@@ -601,12 +637,7 @@ def odoo_create(model: str, values: Any = "{}") -> str:
         model: Model name (e.g. 'crm.lead')
         values: Field values as JSON (e.g. '{"name": "New Lead", "partner_id": 1}')
     """
-    _BLOCKED_MODELS_WRITE = {
-        "ir.model", "ir.module.module", "ir.model.access", "ir.rule",
-        "ir.config_parameter", "res.users", "res.company",
-        "ir.ui.view", "ir.actions.server", "ir.cron",
-    }
-    if model in _BLOCKED_MODELS_WRITE:
+    if model in _PROTECTED_MODELS:
         return json.dumps({"error": f"Cannot create records in protected model '{model}'"})
     client = get_client()
     parsed_values = _parse_values(values)
@@ -624,12 +655,7 @@ def odoo_write(model: str, ids: Any = "[]", values: Any = "{}") -> str:
         ids: JSON array of record IDs (e.g. '[1, 2, 3]')
         values: Field values to update as JSON
     """
-    _BLOCKED_MODELS_WRITE = {
-        "ir.model", "ir.module.module", "ir.model.access", "ir.rule",
-        "ir.config_parameter", "res.users", "res.company",
-        "ir.ui.view", "ir.actions.server", "ir.cron",
-    }
-    if model in _BLOCKED_MODELS_WRITE:
+    if model in _PROTECTED_MODELS:
         return json.dumps({"error": f"Cannot write to protected model '{model}'"})
     client = get_client()
     parsed_ids = _parse_ids(ids)
@@ -649,11 +675,7 @@ def odoo_delete(model: str, ids: Any = "[]") -> str:
         model: Model name
         ids: JSON array of record IDs to delete
     """
-    PROTECTED_MODELS = {
-        "ir.model", "ir.module.module", "ir.model.access",
-        "res.users", "res.company", "ir.rule", "ir.config_parameter",
-    }
-    if model in PROTECTED_MODELS:
+    if model in _PROTECTED_MODELS:
         return json.dumps({"error": f"Cannot delete records from protected model '{model}'"})
     client = get_client()
     parsed_ids = _parse_ids(ids)
@@ -681,7 +703,7 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         "action_archive", "action_unarchive",
         "message_post", "message_subscribe", "message_unsubscribe",
         "toggle_active", "name_search", "name_get",
-        "default_get", "onchange", "read_group", "search_count",
+        "default_get", "onchange",
         "action_confirm", "action_quotation_send",
         "action_post", "_create_invoices",
     }
@@ -689,6 +711,11 @@ def odoo_execute(model: str, method: str, args: Any = "[]", kwargs: Any = "{}") 
         return json.dumps({
             "error": f"Method '{method}' is not in the allowed list",
             "allowed_methods": sorted(ALLOWED_METHODS),
+        })
+    if model not in _ALLOWED_EXECUTE_MODELS:
+        return json.dumps({
+            "error": f"Model '{model}' is not allowed for execute. Use odoo_search_read/odoo_count instead.",
+            "allowed_models": sorted(_ALLOWED_EXECUTE_MODELS),
         })
 
     client = get_client()
@@ -1198,8 +1225,12 @@ def _safe_read_group(client, model: str, domain: list, fields: list, groupby: li
     try:
         return client.execute(model, "read_group", domain, fields, groupby, **kw)
     except xmlrpc.client.Fault as e:
-        logger.warning(f"read_group on {model} failed: {e.faultString}")
-        return []
+        fault_str = str(e.faultString).lower()
+        if any(kw in fault_str for kw in ("field", "model", "column", "not found")):
+            logger.warning(f"read_group on {model} failed (schema): {e.faultString}")
+            return []
+        logger.error(f"read_group on {model} failed (unexpected fault): {e.faultString}")
+        raise
 
 
 def _check_cc_field(client, field_name: str = "hunter_farmer_type") -> bool:
@@ -1207,7 +1238,10 @@ def _check_cc_field(client, field_name: str = "hunter_farmer_type") -> bool:
     try:
         fields = client.fields_get("sale.order", attributes=["string", "type"])
         return field_name in fields
-    except Exception:
+    except xmlrpc.client.Fault:
+        return False
+    except Exception as e:
+        logger.warning("Field check for %s failed (not a schema issue): %s", field_name, e)
         return False
 
 
@@ -2448,8 +2482,13 @@ def odoo_flash_report(report_type: str = "midday") -> str:
             "project.task",
             [("date_deadline", "<", today), ("stage_id.fold", "=", False)],
         )
-    except Exception:
-        pass
+    except xmlrpc.client.Fault as e:
+        if "project.task" in str(e.faultString):
+            overdue_tasks = 0  # Module not installed
+        else:
+            logger.error("Overdue task count failed: %s", e.faultString)
+    except Exception as e:
+        logger.error("Overdue task count failed: %s", e)
 
     result = {
         "report_type": report_type,
@@ -2602,6 +2641,8 @@ def odoo_change_owner(model: str, record_id: int, new_user_id: int) -> str:
         record_id: Record ID to update
         new_user_id: New owner's user ID (res.users)
     """
+    if model not in _ALLOWED_ACTION_MODELS:
+        return json.dumps({"error": f"Model '{model}' is not allowed for change_owner"})
     client = get_client()
 
     # Validate new user exists
@@ -2617,13 +2658,14 @@ def odoo_change_owner(model: str, record_id: int, new_user_id: int) -> str:
     # Determine which field to use
     owner_field = "user_id"
     if model == "crm.lead":
-        # Check if hunter_owner_id exists
         try:
-            fields = client.fields_get(model, attributes=["string", "type"])
-            if "hunter_owner_id" in fields:
+            flds = client.fields_get(model, attributes=["string", "type"])
+            if "hunter_owner_id" in flds:
                 owner_field = "hunter_owner_id"
-        except Exception:
+        except xmlrpc.client.Fault:
             pass
+        except Exception as e:
+            logger.warning("Field check for hunter_owner_id failed: %s", e)
 
     # Read current owner
     records = client.search_read(
@@ -2661,6 +2703,8 @@ def odoo_escalate(model: str, record_id: int, note: str) -> str:
         record_id: Source record ID
         note: Escalation description
     """
+    if model not in _ALLOWED_ACTION_MODELS:
+        return json.dumps({"error": f"Model '{model}' is not allowed for escalation"})
     client = get_client()
 
     # Read source record for context
@@ -2699,17 +2743,12 @@ def odoo_escalate(model: str, record_id: int, note: str) -> str:
             task_vals["source_alert_code"] = f"{model},{record_id}"
         if "related_partner_id" in task_fields and partner_id:
             task_vals["related_partner_id"] = partner_id
-    except Exception:
+        if partner_id and "partner_id" in task_fields:
+            task_vals["partner_id"] = partner_id
+    except xmlrpc.client.Fault:
         pass
-
-    # Set partner_id on task if field exists
-    if partner_id:
-        try:
-            task_fields = task_fields if 'task_fields' in dir() else client.fields_get("project.task", attributes=["string", "type"])
-            if "partner_id" in task_fields:
-                task_vals["partner_id"] = partner_id
-        except Exception:
-            pass
+    except Exception as e:
+        logger.warning("Escalation field check failed: %s", e)
 
     task_id = client.create("project.task", task_vals)
     return json.dumps({
@@ -2815,12 +2854,15 @@ def odoo_audit_log(action: str, model: str, record_id: int, user_telegram_id: st
         raise ValueError(f"{model} record {record_id} not found")
 
     import html as _html
+    # Truncate inputs to prevent database bloat
+    safe_action = _html.escape(action[:100])
+    safe_details = _html.escape(details[:2000])
     log_body = (
         f"<p><strong>Audit Log</strong></p>"
         f"<ul>"
-        f"<li><strong>Action:</strong> {_html.escape(action)}</li>"
+        f"<li><strong>Action:</strong> {safe_action}</li>"
         f"<li><strong>Telegram User:</strong> {_html.escape(user_telegram_id)}</li>"
-        f"<li><strong>Details:</strong> {_html.escape(details)}</li>"
+        f"<li><strong>Details:</strong> {safe_details}</li>"
         f"<li><strong>Timestamp:</strong> {datetime.now().isoformat()}</li>"
         f"</ul>"
     )
@@ -2851,15 +2893,20 @@ def odoo_audit_log(action: str, model: str, record_id: int, user_telegram_id: st
             logger.warning(f"Could not create audit log: {e}")
             log_id = None
 
-    return json.dumps({
-        "success": True,
+    success = log_id is not None
+    result = {
+        "success": success,
         "log_id": log_id,
         "action": action,
         "model": model,
         "record_id": record_id,
         "user_telegram_id": user_telegram_id,
-        "message": f"Audit log created for {action} on {model} #{record_id}",
-    }, indent=2, ensure_ascii=False, default=str)
+    }
+    if success:
+        result["message"] = f"Audit log created for {action} on {model} #{record_id}"
+    else:
+        result["warning"] = f"Audit log creation failed for {action} on {model} #{record_id}"
+    return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 # ---------------------------------------------------------------------------
 # Telegram Permission System

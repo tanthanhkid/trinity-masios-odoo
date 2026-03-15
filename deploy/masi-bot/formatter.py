@@ -19,11 +19,16 @@ def _safe_json(raw: str):
             except (json.JSONDecodeError, TypeError):
                 pass
         return d
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError) as e:
+        preview = (raw[:100] + "...") if raw and len(raw) > 100 else raw
+        logger.error("JSON parse failed (len=%d, preview=%s): %s",
+                     len(raw) if raw else 0, preview, e)
         return {}
 
 
 def _money(amount) -> str:
+    if amount is None:
+        return "0"
     try:
         n = float(amount)
         if n >= 1_000_000_000:
@@ -34,7 +39,7 @@ def _money(amount) -> str:
             return f"{n/1_000:.0f}K"
         return f"{n:,.0f}"
     except (ValueError, TypeError):
-        return str(amount)
+        return "0"
 
 
 def _pct(val) -> str:
@@ -591,4 +596,4 @@ def format_command(cmd: str, raw_data: str) -> str | None:
         return fn(raw_data)
     except Exception as e:
         logger.error("Formatter error for %s: %s", cmd, e, exc_info=True)
-        return None
+        return f"⚠️ Lỗi format dữ liệu cho {cmd}. Đang chuyển sang format AI..."
