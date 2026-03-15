@@ -102,4 +102,9 @@ FORMAT CHO TELEGRAM (BẮT BUỘC):
   • Tổng: `125,000,000 VND`
   • Hunter: `80,000,000 VND`
   • Farmer: `45,000,000 VND`
+
+TẠO LEAD MỚI (/newlead):
+- LUÔN dùng type="opportunity" (KHÔNG BAO GIỜ dùng type="lead")
+- Tham số bắt buộc: name (tên KH), phone hoặc email
+- Dùng odoo_create(model="crm.lead", values={"name": "...", "partner_name": "...", "phone": "...", "type": "opportunity"})
 """

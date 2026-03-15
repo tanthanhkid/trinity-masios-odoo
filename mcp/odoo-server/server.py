@@ -643,6 +643,9 @@ def odoo_create(model: str, values: Any = "{}") -> str:
         return json.dumps({"error": f"Cannot create records in protected model '{model}'"})
     client = get_client()
     parsed_values = _parse_values(values)
+    # Default crm.lead type to opportunity (visible in Pipeline)
+    if model == "crm.lead" and "type" not in parsed_values:
+        parsed_values["type"] = "opportunity"
     record_id = client.create(model, parsed_values)
     return json.dumps({"model": model, "created_id": record_id})
 
