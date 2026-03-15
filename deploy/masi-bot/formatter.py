@@ -77,31 +77,28 @@ def format_morning_brief(raw: str) -> str:
 
     lines = [f"🌅 <b>MORNING BRIEF — {d.get('date', '')}</b>", ""]
 
-    # Hunter KPIs
-    h = d.get("hunter_kpis", {})
-    if h:
-        lines.append("🎯 <b>Hunter</b>")
-        lines.append(f"  • Leads mới tháng: <b>{h.get('leads_new_this_month', 0)}</b>")
-        lines.append(f"  • Leads won: <b>{h.get('leads_won_this_month', 0)}</b>")
-        lines.append(f"  • DT đơn đầu: <b>{_money(h.get('first_order_revenue', 0))}</b> VND")
-        lines.append("")
+    # Hunter KPIs — always show section even if empty/zero
+    h = d.get("hunter_kpis", {}) or {}
+    lines.append("🎯 <b>Hunter</b>")
+    lines.append(f"  • Leads mới tháng: <b>{h.get('leads_new_this_month', 0)}</b>")
+    lines.append(f"  • Leads won: <b>{h.get('leads_won_this_month', 0)}</b>")
+    lines.append(f"  • DT đơn đầu: <b>{_money(h.get('first_order_revenue', 0))}</b> VND")
+    lines.append("")
 
-    # Farmer KPIs
-    f = d.get("farmer_kpis", {})
-    if f:
-        lines.append("🌾 <b>Farmer</b>")
-        lines.append(f"  • DT tái mua: <b>{_money(f.get('repeat_order_revenue', 0))}</b> VND")
-        lines.append(f"  • KH ngủ đông: <b>{f.get('sleeping_customers_90d', 0)}</b>")
-        lines.append("")
+    # Farmer KPIs — always show section even if empty/zero
+    f = d.get("farmer_kpis", {}) or {}
+    lines.append("🌾 <b>Farmer</b>")
+    lines.append(f"  • DT tái mua: <b>{_money(f.get('repeat_order_revenue', 0))}</b> VND")
+    lines.append(f"  • KH ngủ đông: <b>{f.get('sleeping_customers_90d', 0)}</b>")
+    lines.append("")
 
-    # AR summary
-    ar = d.get("ar_task_summary", {})
-    if ar:
-        lines.append("💰 <b>Công nợ</b>")
-        lines.append(f"  • Tổng phải thu: <b>{_money(ar.get('total_receivable', 0))}</b> VND")
-        lines.append(f"  • HĐ quá hạn: <b>{ar.get('overdue_invoices', 0)}</b>")
-        lines.append(f"  • Đến hạn 7 ngày: <b>{ar.get('due_within_7d', 0)}</b>")
-        lines.append("")
+    # AR summary — always show section even if empty/zero
+    ar = d.get("ar_task_summary", {}) or {}
+    lines.append("💰 <b>Công nợ</b>")
+    lines.append(f"  • Tổng phải thu: <b>{_money(ar.get('total_receivable', 0))}</b> VND")
+    lines.append(f"  • HĐ quá hạn: <b>{ar.get('overdue_invoices', 0)}</b>")
+    lines.append(f"  • Đến hạn 7 ngày: <b>{ar.get('due_within_7d', 0)}</b>")
+    lines.append("")
 
     # Alerts
     alerts = d.get("top_alerts", [])
@@ -145,6 +142,8 @@ def format_ceo_alert(raw: str) -> str:
 
 def format_revenue_today(raw: str) -> str:
     d = _safe_json(raw)
+    if not d:
+        return "📊 <b>Doanh số hôm nay</b>\n\n📭 Không có dữ liệu."
     lines = [f"📊 <b>Doanh số hôm nay — {d.get('date', '')}</b>", ""]
 
     total = d.get("total_revenue", 0)
@@ -166,6 +165,7 @@ def format_brief_hunter(raw: str) -> str:
     lines = ["🎯 <b>BRIEF HUNTER</b>", ""]
 
     summary = d.get("summary", {}) if isinstance(d.get("summary"), dict) else {}
+    seen_labels = set()
     for key, label in [
         ("new_leads", "Leads mới"),
         ("leads_new_this_month", "Leads mới tháng"),
@@ -178,9 +178,21 @@ def format_brief_hunter(raw: str) -> str:
         ("conversion_rate", "Tỷ lệ chuyển đổi"),
     ]:
         val = _val(d, key) if _val(d, key) is not None else summary.get(key)
-        if val is not None:
-            display = _pct(val) if "rate" in key else str(val)
-            lines.append(f"• {label}: <b>{display}</b>")
+        if val is None:
+            continue  # key not present in data at all — skip duplicate alias
+        if label in seen_labels:
+            continue  # already displayed via another alias
+        seen_labels.add(label)
+        default_val = "0.0%" if "rate" in key else "0"
+        display = _pct(val) if "rate" in key else str(val)
+        lines.append(f"• {label}: <b>{display}</b>")
+
+    # If no fields were found at all, show defaults so report isn't empty
+    if not seen_labels:
+        for label, default_val in [("Leads mới", "0"), ("SLA breach", "0"),
+                                    ("Báo giá chờ", "0"), ("Đơn đầu tiên", "0"),
+                                    ("Tỷ lệ chuyển đổi", "0.0%")]:
+            lines.append(f"• {label}: <b>{default_val}</b>")
 
     _dq(lines, d)
     return "\n".join(lines)
@@ -191,6 +203,7 @@ def format_brief_farmer(raw: str) -> str:
     lines = ["🌾 <b>BRIEF FARMER</b>", ""]
 
     summary = d.get("summary", {}) if isinstance(d.get("summary"), dict) else {}
+    seen_labels = set()
     for key, label in [
         ("repeat_orders", "Đơn tái mua"),
         ("repeat_order_count", "Đơn tái mua"),
@@ -202,9 +215,20 @@ def format_brief_farmer(raw: str) -> str:
         ("active_customers", "KH active"),
     ]:
         val = _val(d, key) if _val(d, key) is not None else summary.get(key)
-        if val is not None:
-            display = _pct(val) if "rate" in key else str(val)
-            lines.append(f"• {label}: <b>{display}</b>")
+        if val is None:
+            continue  # key not present in data at all — skip duplicate alias
+        if label in seen_labels:
+            continue  # already displayed via another alias
+        seen_labels.add(label)
+        display = _pct(val) if "rate" in key else str(val)
+        lines.append(f"• {label}: <b>{display}</b>")
+
+    # If no fields were found at all, show defaults so report isn't empty
+    if not seen_labels:
+        for label, default_val in [("Đơn tái mua", "0"), ("KH ngủ đông", "0"),
+                                    ("VIP cần chú ý", "0"), ("Tỷ lệ giữ chân", "0.0%"),
+                                    ("KH active", "0")]:
+            lines.append(f"• {label}: <b>{default_val}</b>")
 
     _dq(lines, d)
     return "\n".join(lines)
@@ -246,6 +270,7 @@ def format_brief_cash(raw: str) -> str:
     d = _safe_json(raw)
     lines = ["💵 <b>DÒNG TIỀN</b>", ""]
 
+    seen_labels = set()
     for key, label in [
         ("collected", "💰 Đã thu"),
         ("payments_received", "💰 Đã thu"),
@@ -257,11 +282,22 @@ def format_brief_cash(raw: str) -> str:
         ("collection_rate", "📊 Tỷ lệ thu"),
     ]:
         val = _val(d, key)
-        if val is not None:
-            if "rate" in key:
-                lines.append(f"{label}: <b>{_pct(val)}</b>")
-            else:
-                lines.append(f"{label}: <b>{_money(val)}</b> VND")
+        if val is None:
+            continue  # key not in data — skip duplicate alias
+        if label in seen_labels:
+            continue  # already displayed via another alias
+        seen_labels.add(label)
+        if "rate" in key:
+            lines.append(f"{label}: <b>{_pct(val)}</b>")
+        else:
+            lines.append(f"{label}: <b>{_money(val)}</b> VND")
+
+    # If no fields found, show defaults so report isn't empty
+    if not seen_labels:
+        for label, default_val in [("💰 Đã thu", "0 VND"), ("📑 Tổng phải thu", "0 VND"),
+                                    ("🔴 Quá hạn", "0 VND"), ("📅 Dự kiến 7 ngày", "0 VND"),
+                                    ("📊 Tỷ lệ thu", "0.0%")]:
+            lines.append(f"{label}: <b>{default_val}</b>")
 
     _dq(lines, d)
     return "\n".join(lines)
@@ -276,6 +312,7 @@ def format_kpi(raw: str) -> str:
         lines.append(f"📅 {period}")
         lines.append("")
 
+    seen_labels = set()
     for key, label, is_money in [
         ("monthly_revenue", "💰 Doanh thu tháng", True),
         ("revenue", "💰 Doanh thu", True),
@@ -288,13 +325,25 @@ def format_kpi(raw: str) -> str:
         ("collection_rate", "📊 Tỷ lệ thu", False),
     ]:
         val = d.get(key)
-        if val is not None:
-            if is_money:
-                lines.append(f"{label}: <b>{_money(val)} VND</b>")
-            elif "rate" in key:
-                lines.append(f"{label}: <b>{_pct(val)}</b>")
-            else:
-                lines.append(f"{label}: <b>{val}</b>")
+        if val is None:
+            continue  # key not in data — skip
+        if label in seen_labels:
+            continue  # already displayed via another alias
+        seen_labels.add(label)
+        if is_money:
+            lines.append(f"{label}: <b>{_money(val)} VND</b>")
+        elif "rate" in key:
+            lines.append(f"{label}: <b>{_pct(val)}</b>")
+        else:
+            lines.append(f"{label}: <b>{val}</b>")
+
+    # If no fields found, show defaults so report isn't empty
+    if not seen_labels:
+        for label, default_val in [("💰 Doanh thu", "0 VND"), ("📈 Pipeline", "0 VND"),
+                                    ("💳 Phải thu", "0 VND"), ("⚠️ Quá hạn", "0 VND"),
+                                    ("🎯 Leads mới", "0"), ("🛒 Đơn hàng", "0"),
+                                    ("📊 Tỷ lệ thu", "0.0%")]:
+            lines.append(f"{label}: <b>{default_val}</b>")
 
     _dq(lines, d)
     return "\n".join(lines)
