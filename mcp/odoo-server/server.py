@@ -1021,8 +1021,8 @@ def odoo_customers_exceeding_credit(limit: int = 50) -> str:
 def odoo_dashboard_kpis() -> str:
     """Get CEO dashboard KPIs: pipeline value, monthly revenue, total debt, new leads count."""
     client = get_client()
-    today = datetime.now()
-    first_day = today.replace(day=1).strftime("%Y-%m-%d")
+    today = date.today()
+    first_day = today.replace(day=1).isoformat()
 
     # Pipeline value (server-side aggregation via read_group)
     pipeline_group = client.execute(
@@ -1060,7 +1060,7 @@ def odoo_dashboard_kpis() -> str:
         "monthly_revenue": monthly_revenue,
         "total_debt": total_debt,
         "new_leads": new_leads,
-        "period": first_day + " to " + today.strftime("%Y-%m-%d"),
+        "period": first_day + " to " + today.isoformat(),
     }, indent=2)
 
 
@@ -1169,12 +1169,15 @@ def odoo_invoice_pdf(invoice_id: int) -> str:
 # ---------------------------------------------------------------------------
 
 _team_cache: dict[str, int | None] = {}
+_team_cache_ts: float = 0
+_TEAM_CACHE_TTL: float = 3600  # 1 hour
 
 
 def _get_team_ids() -> dict[str, int | None]:
-    """Resolve Hunter/Farmer team IDs from crm.team. Cached after first call."""
-    global _team_cache
-    if _team_cache:
+    """Resolve Hunter/Farmer team IDs from crm.team. Cached with 1h TTL."""
+    import time as _time
+    global _team_cache, _team_cache_ts
+    if _team_cache and (_time.time() - _team_cache_ts) < _TEAM_CACHE_TTL:
         return _team_cache
     client = get_client()
     teams = client.search_read(
@@ -1191,6 +1194,7 @@ def _get_team_ids() -> dict[str, int | None]:
         elif "farmer" in name_lower:
             farmer_id = t["id"]
     _team_cache = {"hunter": hunter_id, "farmer": farmer_id}
+    _team_cache_ts = _time.time()
     logger.info(f"Team IDs resolved: hunter={hunter_id}, farmer={farmer_id}")
     return _team_cache
 
@@ -1314,9 +1318,9 @@ def odoo_morning_brief() -> str:
     try:
         all_customers = client.search_read(
             "res.partner",
-            [("customer_rank", ">", 0)],
+            [("customer_classification", "=", "old")],
             fields=["id"],
-            limit=200,
+            limit=500,
         )
         if all_customers:
             cust_ids = [c["id"] for c in all_customers]
@@ -1324,7 +1328,7 @@ def odoo_morning_brief() -> str:
                 "sale.order",
                 [("partner_id", "in", cust_ids), ("date_order", ">=", cutoff_90), ("state", "in", ("sale", "done"))],
                 fields=["partner_id"],
-                limit=200,
+                limit=500,
             )
             active_cust_ids = set(o["partner_id"][0] for o in active_orders if o.get("partner_id"))
             sleeping_count = len(set(cust_ids) - active_cust_ids)
@@ -1472,14 +1476,14 @@ def odoo_ceo_alert(limit: int = 5) -> str:
             "record_id": inv["id"],
         })
 
-    # 3. Sleeping VIP customers (customer_rank > 0, no order in 90d)
+    # 3. Sleeping VIP customers (old customers with credit limit, no order in 90d)
     cutoff_90 = (date.today() - timedelta(days=90)).isoformat()
     try:
         vip_customers = client.search_read(
             "res.partner",
-            [("customer_rank", ">", 0)],
-            fields=["id", "name", "customer_rank"],
-            limit=200, order="customer_rank desc",
+            [("customer_classification", "=", "old"), ("credit_limit", ">", 0)],
+            fields=["id", "name", "credit_limit"],
+            limit=200, order="credit_limit desc",
         )
         if vip_customers:
             vip_ids = [c["id"] for c in vip_customers]
@@ -1488,7 +1492,7 @@ def odoo_ceo_alert(limit: int = 5) -> str:
                 [("partner_id", "in", vip_ids), ("date_order", ">=", cutoff_90),
                  ("state", "in", ("sale", "done"))],
                 fields=["partner_id"],
-                limit=200,
+                limit=500,
             )
             active_set = set(o["partner_id"][0] for o in active_orders if o.get("partner_id"))
             sleeping_vips = [c for c in vip_customers if c["id"] not in active_set]
@@ -1500,6 +1504,8 @@ def odoo_ceo_alert(limit: int = 5) -> str:
                     "partner": cust["name"],
                     "record_id": cust["id"],
                 })
+    except xmlrpc.client.Fault as e:
+        logger.warning(f"VIP sleeping check failed (schema): {e.faultString}")
     except Exception as e:
         logger.warning(f"VIP sleeping check failed: {e}")
 
@@ -1707,9 +1713,9 @@ def odoo_brief_farmer(period: str = "month") -> str:
     # Sleeping customers by bucket (30-60d, 60-90d, 90d+)
     customers = client.search_read(
         "res.partner",
-        [("customer_rank", ">", 0)],
+        [("customer_classification", "=", "old")],
         fields=["id", "name"],
-        limit=200,
+        limit=500,
     )
     cust_ids = [c["id"] for c in customers]
 
@@ -1734,7 +1740,7 @@ def odoo_brief_farmer(period: str = "month") -> str:
             "sale.order",
             [("partner_id", "in", cust_ids), ("state", "in", ("sale", "done"))],
             fields=["partner_id", "date_order"],
-            limit=200, order="date_order desc",
+            limit=500, order="date_order desc",
         )
         last_order = {}
         for o in recent_orders:
@@ -2117,12 +2123,12 @@ def odoo_farmer_today(section: str = "all") -> str:
 
     result = {"date": today, "section": section}
 
-    # Get customer base
+    # Get customer base (old customers = established customers)
     customers = client.search_read(
         "res.partner",
-        [("customer_rank", ">", 0)],
-        fields=["id", "name", "customer_rank"],
-        limit=200, order="customer_rank desc",
+        [("customer_classification", "=", "old")],
+        fields=["id", "name", "credit_limit"],
+        limit=500, order="credit_limit desc",
     )
     cust_ids = [c["id"] for c in customers]
     cust_map = {c["id"]: c["name"] for c in customers}
@@ -2134,7 +2140,7 @@ def odoo_farmer_today(section: str = "all") -> str:
             "sale.order",
             [("partner_id", "in", cust_ids), ("state", "in", ("sale", "done"))],
             fields=["partner_id", "date_order"],
-            limit=200, order="date_order desc",
+            limit=500, order="date_order desc",
         )
         for o in orders:
             pid = o["partner_id"][0] if o["partner_id"] else None
@@ -2557,12 +2563,35 @@ def odoo_mark_contacted(lead_id: int) -> str:
         raise ValueError(f"Lead {lead_id} not found")
 
     now = datetime.now().isoformat()
-    client.write("crm.lead", [lead_id], {"first_touch_date": now})
+    # first_touch_date is a custom field — check existence before writing
+    try:
+        flds = client.fields_get("crm.lead", attributes=["type"])
+        if "first_touch_date" in flds:
+            client.write("crm.lead", [lead_id], {"first_touch_date": now})
+        else:
+            # Fallback: post a note on the chatter
+            with client._lock:
+                client._object.execute_kw(
+                    client.db, client.uid, client.password,
+                    "crm.lead", "message_post", [[lead_id]],
+                    {"body": f"Marked as contacted at {now}", "message_type": "comment",
+                     "subtype_xmlid": "mail.mt_note"},
+                )
+    except xmlrpc.client.Fault:
+        # Field doesn't exist, just log via message_post
+        with client._lock:
+            client._object.execute_kw(
+                client.db, client.uid, client.password,
+                "crm.lead", "message_post", [[lead_id]],
+                {"body": f"Marked as contacted at {now}", "message_type": "comment",
+                 "subtype_xmlid": "mail.mt_note"},
+            )
+
     return json.dumps({
         "success": True,
         "lead_id": lead_id,
         "lead_name": leads[0]["name"],
-        "first_touch_date": now,
+        "contacted_at": now,
         "message": f"Lead '{leads[0]['name']}' marked as contacted",
     }, indent=2, ensure_ascii=False, default=str)
 
@@ -2588,6 +2617,11 @@ def odoo_mark_collection(invoice_id: int, status: str) -> str:
     )
     if not invoices:
         raise ValueError(f"Invoice {invoice_id} not found")
+
+    # collection_status is a custom field — verify it exists
+    flds = client.fields_get("account.move", attributes=["type"])
+    if "collection_status" not in flds:
+        raise ValueError("Field 'collection_status' not found on account.move — masios_command_center module may not be installed")
 
     client.write("account.move", [invoice_id], {"collection_status": status})
     return json.dumps({
@@ -2617,10 +2651,15 @@ def odoo_set_dispute(invoice_id: int, note: str) -> str:
     if not invoices:
         raise ValueError(f"Invoice {invoice_id} not found")
 
-    client.write("account.move", [invoice_id], {
-        "dispute_status": "disputed",
-        "dispute_note": note,
-    })
+    # dispute_status/dispute_note are custom fields — verify existence
+    flds = client.fields_get("account.move", attributes=["type"])
+    if "dispute_status" not in flds:
+        raise ValueError("Field 'dispute_status' not found on account.move — masios_command_center module may not be installed")
+
+    vals = {"dispute_status": "disputed"}
+    if "dispute_note" in flds:
+        vals["dispute_note"] = note
+    client.write("account.move", [invoice_id], vals)
     return json.dumps({
         "success": True,
         "invoice_id": invoice_id,
@@ -3215,16 +3254,28 @@ def odoo_telegram_list_users() -> str:
 
 @mcp.tool()
 @_odoo_error
-def odoo_telegram_register_user(telegram_id: str, name: str, role_code: str, telegram_username: str = "") -> str:
+def odoo_telegram_register_user(telegram_id: str, name: str, role_code: str,
+                                telegram_username: str = "", caller_telegram_id: str = "") -> str:
     """Register a new Telegram user or update an existing one.
+    Restricted to CEO and Admin roles only.
 
     Args:
-        telegram_id: Telegram user ID
+        telegram_id: Telegram user ID to register
         name: Display name for the user
         role_code: Role code to assign (e.g. 'ceo', 'hunter', 'farmer', 'accountant')
         telegram_username: Optional Telegram username (without @)
+        caller_telegram_id: Telegram ID of the user making this request (for permission check)
     """
     client = get_client()
+
+    # Permission check: only CEO and Admin/Tech can register users
+    if caller_telegram_id:
+        caller_user, caller_role = _resolve_user_permissions(client, caller_telegram_id)
+        if caller_role is None or caller_role.get("code") not in ("ceo", "admin_tech"):
+            return json.dumps({
+                "error": "Chỉ CEO hoặc Admin/Tech mới có quyền đăng ký người dùng mới",
+                "allowed_roles": ["ceo", "admin_tech"],
+            }, indent=2, ensure_ascii=False)
 
     # Find role by code
     roles = client.search_read(
