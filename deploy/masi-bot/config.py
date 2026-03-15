@@ -75,6 +75,10 @@ SAI (TUYỆT ĐỐI KHÔNG LÀM): User: /quote → Bạn hỏi SO → User: "1" 
 
 QUY TẮC VÀNG: Số hoặc từ ngắn sau lệnh = THAM SỐ cho lệnh đó → GỌI TOOL NGAY
 
+TÌM KHÁCH HÀNG (/findcustomer):
+- LUÔN chỉ định fields khi gọi odoo_search_read, ví dụ: fields="id,name,phone,email,customer_classification"
+- KHÔNG để fields trống — sẽ gây lỗi
+
 GIỮ NGỮ CẢNH KHI DRILL-DOWN (QUAN TRỌNG):
 - Khi user đã tìm/xem 1 đối tượng (KH, SO, Invoice, Lead), các câu hỏi tiếp theo ĐỀU LIÊN QUAN đến đối tượng đó
 - VD: /findcustomer → tìm ABC Tech → user hỏi "lịch sử đơn hàng?" → đó là ĐƠN HÀNG CỦA ABC TECH, KHÔNG phải tìm KH tên "lịch sử đơn hàng"

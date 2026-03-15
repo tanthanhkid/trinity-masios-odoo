@@ -600,7 +600,25 @@ def odoo_search_read(
         return json.dumps({"error": f"Cannot read from restricted model '{model}'"})
     client = get_client()
     parsed_domain = _parse_domain(domain) if domain else []
-    parsed_fields = [f.strip() for f in fields.split(",") if f.strip()] if fields else None
+    if fields:
+        parsed_fields = [f.strip() for f in fields.split(",") if f.strip()]
+    else:
+        # Default safe fields — avoid binary/image fields that cause AssertionError
+        _DEFAULT_FIELDS = {
+            "res.partner": ["id", "name", "phone", "email", "mobile", "company_type",
+                            "customer_classification", "credit_limit", "outstanding_debt",
+                            "credit_available", "credit_exceeded", "street", "city", "active"],
+            "crm.lead": ["id", "name", "partner_name", "phone", "email_from", "type",
+                          "stage_id", "user_id", "expected_revenue", "probability",
+                          "priority", "date_deadline", "create_date", "active"],
+            "sale.order": ["id", "name", "partner_id", "date_order", "amount_total",
+                           "state", "invoice_status", "user_id"],
+            "account.move": ["id", "name", "partner_id", "invoice_date", "invoice_date_due",
+                             "amount_total", "amount_residual", "state", "payment_state", "move_type"],
+            "project.task": ["id", "name", "project_id", "user_ids", "date_deadline",
+                             "stage_id", "priority"],
+        }
+        parsed_fields = _DEFAULT_FIELDS.get(model, None)
     limit = min(limit, 100)
 
     records = client.search_read(
