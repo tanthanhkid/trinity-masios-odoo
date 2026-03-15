@@ -127,7 +127,7 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     # Collect PDFs
     pdfs = []
-    for pdf_data in agent.pop_pending_pdfs():
+    for pdf_data in agent.pop_pending_pdfs(user_id):
         pdfs.append({
             "filename": pdf_data.get("filename", "document.pdf"),
             "size_bytes": pdf_data.get("size_bytes", 0),

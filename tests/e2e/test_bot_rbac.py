@@ -18,7 +18,8 @@ Prerequisites: masi-bot test_server running at http://103.72.97.51:8300
 import sys, os, json, time, urllib.request, urllib.error
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-API_BASE = "http://103.72.97.51:8300"
+API_BASE = os.environ.get("TEST_API_BASE", "http://103.72.97.51:8300")
+TEST_API_TOKEN = os.environ.get("TEST_API_TOKEN", "")
 CEO_USER_ID    = 2048339435  # CEO — all commands
 HUNTER_USER_ID = 1481072032  # Hunter Lead
 FARMER_USER_ID = 5001000001  # Farmer Lead
@@ -26,8 +27,10 @@ FARMER_USER_ID = 5001000001  # Farmer Lead
 
 def api_post(endpoint, payload, timeout=8):
     data = json.dumps(payload).encode()
-    req = urllib.request.Request(f"{API_BASE}{endpoint}", data=data,
-                                  headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if TEST_API_TOKEN:
+        headers["Authorization"] = f"Bearer {TEST_API_TOKEN}"
+    req = urllib.request.Request(f"{API_BASE}{endpoint}", data=data, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read())

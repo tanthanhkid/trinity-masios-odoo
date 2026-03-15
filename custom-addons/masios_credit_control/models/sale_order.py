@@ -35,6 +35,9 @@ class SaleOrder(models.Model):
             # Leave at 0 only if unlimited credit is intentionally desired.
             elif partner.customer_classification == 'old' and partner.credit_limit > 0:
                 # KH cũ: kiểm tra hạn mức công nợ
+                # Force recompute to get fresh debt value (not stale stored cache)
+                partner.invalidate_recordset(['outstanding_debt', 'credit_available'])
+                partner._compute_outstanding_debt()
                 new_total = partner.outstanding_debt + order.amount_total
                 if new_total > partner.credit_limit:
                     raise UserError(_(

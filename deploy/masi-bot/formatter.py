@@ -165,7 +165,7 @@ def format_brief_hunter(raw: str) -> str:
     d = _safe_json(raw)
     lines = ["🎯 <b>BRIEF HUNTER</b>", ""]
 
-    # Handle various field names from MCP
+    summary = d.get("summary", {}) if isinstance(d.get("summary"), dict) else {}
     for key, label in [
         ("new_leads", "Leads mới"),
         ("leads_new_this_month", "Leads mới tháng"),
@@ -177,7 +177,7 @@ def format_brief_hunter(raw: str) -> str:
         ("first_order_count", "Đơn đầu tiên"),
         ("conversion_rate", "Tỷ lệ chuyển đổi"),
     ]:
-        val = _val(d, key, d.get("summary", {}).get(key) if isinstance(d.get("summary"), dict) else None)
+        val = _val(d, key) if _val(d, key) is not None else summary.get(key)
         if val is not None:
             display = _pct(val) if "rate" in key else str(val)
             lines.append(f"• {label}: <b>{display}</b>")
@@ -190,6 +190,7 @@ def format_brief_farmer(raw: str) -> str:
     d = _safe_json(raw)
     lines = ["🌾 <b>BRIEF FARMER</b>", ""]
 
+    summary = d.get("summary", {}) if isinstance(d.get("summary"), dict) else {}
     for key, label in [
         ("repeat_orders", "Đơn tái mua"),
         ("repeat_order_count", "Đơn tái mua"),
@@ -200,7 +201,7 @@ def format_brief_farmer(raw: str) -> str:
         ("retention_rate", "Tỷ lệ giữ chân"),
         ("active_customers", "KH active"),
     ]:
-        val = _val(d, key, d.get("summary", {}).get(key) if isinstance(d.get("summary"), dict) else None)
+        val = _val(d, key) if _val(d, key) is not None else summary.get(key)
         if val is not None:
             display = _pct(val) if "rate" in key else str(val)
             lines.append(f"• {label}: <b>{display}</b>")
@@ -310,8 +311,8 @@ def format_pipeline(raw: str) -> str:
     for s in stages:
         if isinstance(s, dict):
             name = _val(s, "stage", "name", default="?")
-            count = _val(s, "count", default=0)
-            value = _val(s, "value", "expected_revenue", default=0)
+            count = _val(s, "count", default=0) or 0
+            value = _val(s, "value", "expected_revenue", default=0) or 0
             total_count += count
             total_value += value
             lines.append(f"• {name}: <b>{count}</b> leads — {_money(value)} VND")
@@ -457,7 +458,8 @@ def format_task_overdue(raw: str) -> str:
         if isinstance(t, dict):
             name = _val(t, "name", "task_name", default="?")
             days = _val(t, "days_overdue", "days", default="?")
-            project = _val(t, "project", "user", "assigned_to", default="")
+            project_raw = _val(t, "project", "project_id", "assigned_to", default="")
+            project = project_raw[1] if isinstance(project_raw, (list, tuple)) and len(project_raw) > 1 else (project_raw or "")
             lines.append(f"  • <b>{name}</b>")
             proj_str = f"{project} | " if project else ""
             lines.append(f"    {proj_str}Quá hạn: {days} ngày")

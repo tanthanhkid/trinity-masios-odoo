@@ -12,7 +12,8 @@ import urllib.request
 import urllib.error
 from dataclasses import dataclass
 
-API_BASE = "http://103.72.97.51:8300"
+API_BASE = os.environ.get("TEST_API_BASE", "http://103.72.97.51:8300")
+TEST_API_TOKEN = os.environ.get("TEST_API_TOKEN", "")
 CEO_USER_ID = 2048339435
 TIMEOUT = 8
 
@@ -26,9 +27,11 @@ class BotTestResult:
 
 def api_post(endpoint: str, payload: dict, timeout: int = TIMEOUT) -> dict:
     data = json.dumps(payload).encode()
+    headers = {"Content-Type": "application/json"}
+    if TEST_API_TOKEN:
+        headers["Authorization"] = f"Bearer {TEST_API_TOKEN}"
     req = urllib.request.Request(
-        f"{API_BASE}{endpoint}", data=data,
-        headers={"Content-Type": "application/json"},
+        f"{API_BASE}{endpoint}", data=data, headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
